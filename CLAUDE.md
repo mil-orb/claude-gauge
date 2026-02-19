@@ -14,6 +14,7 @@ Displays a color-coded progress bar in the Claude Code status line showing:
 Edit `config.json` in the plugin root:
 - `display_mode`: `"bar"` (default) or `"compact"`
 - `bar_width`: number of characters (default 20)
+- `show_duration`: `true` (default) or `false` — show session elapsed time
 - `weekly_limit`: reserved for future weekly usage tracking (leave null)
 
 ## Dependencies

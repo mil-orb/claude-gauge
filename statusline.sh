@@ -35,15 +35,16 @@ fi
 CFG_FILE="$SCRIPT_DIR/config.json"
 if [[ ! -f "$CFG_FILE" ]]; then
   CFG_FILE=$(mktemp)
-  printf '{"display_mode":"bar","bar_width":20}\n' > "$CFG_FILE"
+  printf '{"display_mode":"bar","bar_width":20,"show_duration":true}\n' > "$CFG_FILE"
   trap 'rm -f "$CFG_FILE"' EXIT
 fi
 
 if [[ "$PARSE_CMD" == "jq" ]]; then
-  IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DISPLAY_MODE BAR_WIDTH <<< "$(
+  IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DURATION_MS DISPLAY_MODE BAR_WIDTH SHOW_DURATION <<< "$(
     jq -r --slurpfile cfg "$CFG_FILE" '
       ($cfg[0].display_mode // "bar") as $mode |
       ($cfg[0].bar_width // 20) as $bw |
+      (if $cfg[0].show_duration == false then "false" else "true" end) as $sd |
       [
         (if .context_window.used_percentage | type == "number" then .context_window.used_percentage | floor else -1 end),
         (.context_window.context_window_size // 200000),
@@ -55,18 +56,20 @@ if [[ "$PARSE_CMD" == "jq" ]]; then
           else 0 end
         ),
         (.cost.total_cost_usd // 0),
+        (.cost.total_duration_ms // 0),
         $mode,
-        $bw
+        $bw,
+        $sd
       ] | @tsv
     ' <<< "$INPUT"
   )"
 else
-  IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DISPLAY_MODE BAR_WIDTH <<< "$(
+  IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DURATION_MS DISPLAY_MODE BAR_WIDTH SHOW_DURATION <<< "$(
     node -e "
       const fs = require('fs');
       const j = JSON.parse(fs.readFileSync(0, 'utf8'));
       const cfgPath = process.argv[1] + '/config.json';
-      let cfg = { display_mode: 'bar', bar_width: 20 };
+      let cfg = { display_mode: 'bar', bar_width: 20, show_duration: true };
       try { cfg = { ...cfg, ...JSON.parse(fs.readFileSync(cfgPath, 'utf8')) }; } catch {}
       const cw = j.context_window || {};
       const cu = cw.current_usage || {};
@@ -74,7 +77,9 @@ else
       const ctxSize = cw.context_window_size || 200000;
       const inputTokens = (cu.input_tokens || 0) + (cu.cache_creation_input_tokens || 0) + (cu.cache_read_input_tokens || 0);
       const cost = (j.cost || {}).total_cost_usd || 0;
-      console.log([pct, ctxSize, inputTokens, cost, cfg.display_mode, cfg.bar_width].join('\t'));
+      const durationMs = (j.cost || {}).total_duration_ms || 0;
+      const sd = cfg.show_duration === false ? 'false' : 'true';
+      console.log([pct, ctxSize, inputTokens, cost, durationMs, cfg.display_mode, cfg.bar_width, sd].join('\t'));
     " "$SCRIPT_DIR" <<< "$INPUT"
   )"
 fi
@@ -125,11 +130,32 @@ CTX_FMT=$(fmt_tokens "$CTX_SIZE")
 [[ "$COST" =~ ^[0-9.]+$ ]] || COST=0
 COST_FMT=$(LC_NUMERIC=C printf '$%.2f' "$COST")
 
+# --- Format duration ---
+fmt_duration() {
+  local ms=$1
+  local total_sec=$(( ms / 1000 ))
+  local h=$(( total_sec / 3600 ))
+  local m=$(( (total_sec % 3600) / 60 ))
+  if (( h > 0 )); then
+    printf '%dh%02dm' "$h" "$m"
+  elif (( m > 0 )); then
+    printf '%dm' "$m"
+  else
+    printf '%ds' "$total_sec"
+  fi
+}
+
+DURATION_SUFFIX=""
+if [[ "$SHOW_DURATION" == "true" ]]; then
+  [[ "$DURATION_MS" =~ ^[0-9]+$ ]] || DURATION_MS=0
+  DURATION_SUFFIX=" · $(fmt_duration "$DURATION_MS")"
+fi
+
 # --- Render ---
 if [[ "$DISPLAY_MODE" == "compact" ]]; then
-  # Compact mode: ● 48% 96k/200k $0.08
-  printf '%s●%s %s%% %s/%s %s' \
-    "$COLOR" "$C_RESET" "$PCT" "$TOKENS_FMT" "$CTX_FMT" "$COST_FMT"
+  # Compact mode: ● 48% 96k/200k $0.08 12m
+  printf '%s●%s %s%% %s/%s %s%s' \
+    "$COLOR" "$C_RESET" "$PCT" "$TOKENS_FMT" "$CTX_FMT" "$COST_FMT" "$DURATION_SUFFIX"
 else
   # Bar mode with gradient fade edge
   WIDTH=${BAR_WIDTH:-20}
@@ -154,6 +180,6 @@ else
   EMPTY=$(( WIDTH - FILLED - EDGE_CHARS ))
   for ((i=0; i<EMPTY; i++)); do BAR+="░"; done
 
-  printf '%s%s%s %s%% · %s/%s · %s' \
-    "$COLOR" "$BAR" "$C_RESET" "$PCT" "$TOKENS_FMT" "$CTX_FMT" "$COST_FMT"
+  printf '%s%s%s %s%% · %s/%s · %s%s' \
+    "$COLOR" "$BAR" "$C_RESET" "$PCT" "$TOKENS_FMT" "$CTX_FMT" "$COST_FMT" "$DURATION_SUFFIX"
 fi
