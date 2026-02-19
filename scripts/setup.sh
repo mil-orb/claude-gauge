@@ -5,7 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SETTINGS="$HOME/.claude/settings.json"
 BACKUP="$HOME/.claude/statusline.backup.json"
-STATUSLINE_CMD="$PLUGIN_ROOT/statusline.sh"
+# On Windows, .sh files can't be executed directly — prefix with bash
+if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* || "$OSTYPE" == win* ]]; then
+  STATUSLINE_CMD="bash $PLUGIN_ROOT/statusline.sh"
+else
+  STATUSLINE_CMD="$PLUGIN_ROOT/statusline.sh"
+fi
 
 # Ensure settings file exists
 if [[ ! -f "$SETTINGS" ]]; then
