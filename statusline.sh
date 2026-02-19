@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- Read stdin ---
-INPUT=$(cat)
-
-# --- Script directory (for config.json) ---
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 # --- ANSI colors ---
 C_GREEN=$'\033[32m'
 C_YELLOW=$'\033[33m'
@@ -14,6 +8,20 @@ C_ORANGE=$'\033[38;5;208m'
 C_RED=$'\033[31m'
 C_DIM=$'\033[2m'
 C_RESET=$'\033[0m'
+
+# --- Script directory (for config.json) ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --- Read stdin (with timeout to avoid hanging) ---
+INPUT=""
+if ! read -t 2 -d '' INPUT; then
+  # read returns non-zero when it hits the delimiter or timeout;
+  # if INPUT is still empty, there was no data at all.
+  if [[ -z "$INPUT" ]]; then
+    printf '%s-- no data --%s' "$C_DIM" "$C_RESET"
+    exit 0
+  fi
+fi
 
 # --- Parse JSON ---
 # Prefer jq, fall back to node
@@ -23,13 +31,21 @@ else
   PARSE_CMD="node"
 fi
 
+# --- Resolve config file (fall back to inline default) ---
+CFG_FILE="$SCRIPT_DIR/config.json"
+if [[ ! -f "$CFG_FILE" ]]; then
+  CFG_FILE=$(mktemp)
+  printf '{"display_mode":"bar","bar_width":20}\n' > "$CFG_FILE"
+  trap 'rm -f "$CFG_FILE"' EXIT
+fi
+
 if [[ "$PARSE_CMD" == "jq" ]]; then
   IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DISPLAY_MODE BAR_WIDTH <<< "$(
-    jq -r --slurpfile cfg "$SCRIPT_DIR/config.json" '
+    jq -r --slurpfile cfg "$CFG_FILE" '
       ($cfg[0].display_mode // "bar") as $mode |
       ($cfg[0].bar_width // 20) as $bw |
       [
-        (.context_window.used_percentage // -1 | floor),
+        (if .context_window.used_percentage | type == "number" then .context_window.used_percentage | floor else -1 end),
         (.context_window.context_window_size // 200000),
         (
           if .context_window.current_usage != null then
@@ -48,8 +64,8 @@ else
   IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DISPLAY_MODE BAR_WIDTH <<< "$(
     node -e "
       const fs = require('fs');
-      const j = JSON.parse(process.argv[1]);
-      const cfgPath = process.argv[2] + '/config.json';
+      const j = JSON.parse(fs.readFileSync('/dev/stdin', 'utf8'));
+      const cfgPath = process.argv[1] + '/config.json';
       let cfg = { display_mode: 'bar', bar_width: 20 };
       try { cfg = { ...cfg, ...JSON.parse(fs.readFileSync(cfgPath, 'utf8')) }; } catch {}
       const cw = j.context_window || {};
@@ -59,7 +75,7 @@ else
       const inputTokens = (cu.input_tokens || 0) + (cu.cache_creation_input_tokens || 0) + (cu.cache_read_input_tokens || 0);
       const cost = (j.cost || {}).total_cost_usd || 0;
       console.log([pct, ctxSize, inputTokens, cost, cfg.display_mode, cfg.bar_width].join('\t'));
-    " "$INPUT" "$SCRIPT_DIR"
+    " "$SCRIPT_DIR" <<< "$INPUT"
   )"
 fi
 
@@ -68,6 +84,10 @@ if [[ "$PCT" == "-1" ]]; then
   printf '%s-- waiting --%s' "$C_DIM" "$C_RESET"
   exit 0
 fi
+
+# --- Clamp PCT to 0-100 ---
+(( PCT > 100 )) && PCT=100 || true
+(( PCT < 0 )) && PCT=0 || true
 
 # --- Pick color ---
 pick_color() {
@@ -102,7 +122,8 @@ fmt_tokens() {
 
 TOKENS_FMT=$(fmt_tokens "$INPUT_TOKENS")
 CTX_FMT=$(fmt_tokens "$CTX_SIZE")
-COST_FMT=$(printf '$%.2f' "$COST")
+[[ "$COST" =~ ^[0-9.]+$ ]] || COST=0
+COST_FMT=$(LC_NUMERIC=C printf '$%.2f' "$COST")
 
 # --- Render ---
 if [[ "$DISPLAY_MODE" == "compact" ]]; then
