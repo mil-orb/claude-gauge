@@ -162,13 +162,15 @@ async function main() {
     // Build the text portion first to measure it
     const textPart = ` ${pct}% \u00b7 ${tokensFmt}/${ctxFmt} \u00b7 ${costFmt}${durationSuffix}`;
 
-    // Calculate bar width: auto-size to terminal, or use config override
+    // Calculate bar width: fit within terminal, never wrap to 2 lines
     let width;
-    if (cfg.bar_width === 'auto' || cfg.bar_width === 0 || cfg.bar_width == null) {
-      const termWidth = process.stdout.columns || 80;
-      width = Math.max(5, termWidth - textPart.length);
-    } else {
+    if (typeof cfg.bar_width === 'number' && cfg.bar_width > 0) {
       width = cfg.bar_width;
+    } else {
+      const termWidth = process.stdout.columns || 80;
+      const available = termWidth - textPart.length;
+      // Use at most half the terminal for the bar, minimum 10
+      width = Math.max(10, Math.min(available, Math.floor(termWidth * 0.4)));
     }
 
     const filled = Math.floor(pct * width / 100);
