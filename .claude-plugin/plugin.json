@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "Intuitive context window visualizer for Claude Code - color-coded progress bar in your status line",
   "author": {
-    "name": ""
+    "name": "mil-orb"
   },
-  "repository": "",
+  "repository": "https://github.com/mil-orb/claude-gauge",
   "license": "MIT",
   "keywords": [
     "statusline",

@@ -1,15 +1,18 @@
 {
-  "name": "claude-gauge",
-  "description": "Intuitive context window visualizer for Claude Code",
+  "name": "mil-orb",
   "owner": {
-    "name": ""
+    "name": "mil-orb"
+  },
+  "metadata": {
+    "description": "Plugins by mil-orb",
+    "homepage": "https://github.com/mil-orb/claude-gauge"
   },
   "plugins": [
     {
       "name": "claude-gauge",
-      "description": "Intuitive context window visualizer for Claude Code - color-coded progress bar in your status line",
       "version": "1.0.0",
-      "source": "./"
+      "source": "./",
+      "description": "Intuitive context window visualizer for Claude Code - color-coded progress bar in your status line"
     }
   ]
 }
