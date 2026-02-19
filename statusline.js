@@ -159,7 +159,18 @@ async function main() {
   if (cfg.display_mode === 'compact') {
     process.stdout.write(`${color}\u25cf${C.reset} ${pct}% ${tokensFmt}/${ctxFmt} ${costFmt}${durationSuffix}`);
   } else {
-    const width = cfg.bar_width || 20;
+    // Build the text portion first to measure it
+    const textPart = ` ${pct}% \u00b7 ${tokensFmt}/${ctxFmt} \u00b7 ${costFmt}${durationSuffix}`;
+
+    // Calculate bar width: auto-size to terminal, or use config override
+    let width;
+    if (cfg.bar_width === 'auto' || cfg.bar_width === 0 || cfg.bar_width == null) {
+      const termWidth = process.stdout.columns || 80;
+      width = Math.max(5, termWidth - textPart.length);
+    } else {
+      width = cfg.bar_width;
+    }
+
     const filled = Math.floor(pct * width / 100);
     const remainder = (pct * width * 10 / 100) % 10;
 
@@ -174,7 +185,7 @@ async function main() {
     const empty = width - filled - edgeChars;
     bar += '\u2591'.repeat(Math.max(0, empty));
 
-    process.stdout.write(`${color}${bar}${C.reset} ${pct}% \u00b7 ${tokensFmt}/${ctxFmt} \u00b7 ${costFmt}${durationSuffix}`);
+    process.stdout.write(`${color}${bar}${C.reset}${textPart}`);
   }
 }
 
