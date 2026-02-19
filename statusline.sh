@@ -40,11 +40,12 @@ if [[ ! -f "$CFG_FILE" ]]; then
 fi
 
 if [[ "$PARSE_CMD" == "jq" ]]; then
-  IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DURATION_MS DISPLAY_MODE BAR_WIDTH SHOW_DURATION <<< "$(
+  IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DURATION_MS DISPLAY_MODE BAR_WIDTH SHOW_DURATION CURRENCY_RATE <<< "$(
     jq -r --slurpfile cfg "$CFG_FILE" '
       ($cfg[0].display_mode // "bar") as $mode |
       ($cfg[0].bar_width // 20) as $bw |
       (if $cfg[0].show_duration == false then "false" else "true" end) as $sd |
+      (if $cfg[0].currency_rate != null and ($cfg[0].currency_rate | type == "number") then $cfg[0].currency_rate else 0 end) as $cr |
       [
         (if .context_window.used_percentage | type == "number" then .context_window.used_percentage | floor else -1 end),
         (.context_window.context_window_size // 200000),
@@ -59,17 +60,18 @@ if [[ "$PARSE_CMD" == "jq" ]]; then
         (.cost.total_duration_ms // 0),
         $mode,
         $bw,
-        $sd
+        $sd,
+        $cr
       ] | @tsv
     ' <<< "$INPUT"
   )"
 else
-  IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DURATION_MS DISPLAY_MODE BAR_WIDTH SHOW_DURATION <<< "$(
+  IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DURATION_MS DISPLAY_MODE BAR_WIDTH SHOW_DURATION CURRENCY_RATE <<< "$(
     node -e "
       const fs = require('fs');
       const j = JSON.parse(fs.readFileSync(0, 'utf8'));
       const cfgPath = process.argv[1] + '/config.json';
-      let cfg = { display_mode: 'bar', bar_width: 20, show_duration: true };
+      let cfg = { display_mode: 'bar', bar_width: 20, show_duration: true, currency_rate: null };
       try { cfg = { ...cfg, ...JSON.parse(fs.readFileSync(cfgPath, 'utf8')) }; } catch {}
       const cw = j.context_window || {};
       const cu = cw.current_usage || {};
@@ -79,7 +81,8 @@ else
       const cost = (j.cost || {}).total_cost_usd || 0;
       const durationMs = (j.cost || {}).total_duration_ms || 0;
       const sd = cfg.show_duration === false ? 'false' : 'true';
-      console.log([pct, ctxSize, inputTokens, cost, durationMs, cfg.display_mode, cfg.bar_width, sd].join('\t'));
+      const cr = typeof cfg.currency_rate === 'number' ? cfg.currency_rate : 0;
+      console.log([pct, ctxSize, inputTokens, cost, durationMs, cfg.display_mode, cfg.bar_width, sd, cr].join('\t'));
     " "$SCRIPT_DIR" <<< "$INPUT"
   )"
 fi
@@ -128,7 +131,39 @@ fmt_tokens() {
 TOKENS_FMT=$(fmt_tokens "$INPUT_TOKENS")
 CTX_FMT=$(fmt_tokens "$CTX_SIZE")
 [[ "$COST" =~ ^[0-9.]+$ ]] || COST=0
-COST_FMT=$(LC_NUMERIC=C printf '$%.2f' "$COST")
+
+# --- Currency: auto-detect symbol from locale, apply rate if configured ---
+detect_currency_symbol() {
+  local loc="${LC_MONETARY:-${LC_ALL:-${LANG:-en_US}}}"
+  case "$loc" in
+    en_GB*|cy_GB*) printf '£' ;;
+    en_AU*|en_NZ*) printf 'A$' ;;
+    en_CA*|fr_CA*) printf 'C$' ;;
+    ja_JP*) printf '¥' ;;
+    zh_CN*) printf '¥' ;;
+    ko_KR*) printf '₩' ;;
+    hi_IN*|en_IN*) printf '₹' ;;
+    pt_BR*) printf 'R$' ;;
+    *_CH*) printf 'CHF' ;;
+    de_*|fr_FR*|es_ES*|it_*|nl_*|pt_PT*|fi_*|el_*|sk_*|sl_*|et_*|lv_*|lt_*) printf '€' ;;
+    da_DK*|sv_SE*|nb_NO*|nn_NO*) printf 'kr' ;;
+    pl_PL*) printf 'zł' ;;
+    cs_CZ*) printf 'Kč' ;;
+    hu_HU*) printf 'Ft' ;;
+    ro_RO*) printf 'lei' ;;
+    tr_TR*) printf '₺' ;;
+    *) printf '$' ;;
+  esac
+}
+
+[[ "$CURRENCY_RATE" =~ ^[0-9.]+$ ]] || CURRENCY_RATE=0
+if [[ "$CURRENCY_RATE" != "0" ]]; then
+  CSYM=$(detect_currency_symbol)
+  CONVERTED=$(LC_NUMERIC=C awk "BEGIN { printf \"%.2f\", $COST * $CURRENCY_RATE }")
+  COST_FMT="${CSYM}${CONVERTED}"
+else
+  COST_FMT=$(LC_NUMERIC=C printf '$%.2f' "$COST")
+fi
 
 # --- Format duration ---
 fmt_duration() {

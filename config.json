@@ -2,5 +2,6 @@
   "display_mode": "bar",
   "bar_width": 20,
   "show_duration": true,
+  "currency_rate": null,
   "weekly_limit": null
 }

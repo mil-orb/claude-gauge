@@ -33,6 +33,7 @@ Edit `config.json` in the plugin directory:
 | `display_mode` | `"bar"` | `"bar"` for progress bar, `"compact"` for minimal dot + numbers |
 | `bar_width` | `20` | Number of characters for the progress bar |
 | `show_duration` | `true` | Show session elapsed time |
+| `currency_rate` | `null` | Exchange rate from USD (e.g. `0.79` for GBP). Currency symbol auto-detected from locale. |
 | `weekly_limit` | `null` | Reserved for future weekly usage tracking |
 
 ## Requirements
