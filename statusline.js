@@ -11,6 +11,7 @@ const DIM = '\x1b[2m';
 const colorSchemes = {
   gradient(pct) {
     // green (40,200,60) → yellow (220,200,0) → red (220,40,20)
+    // Linear to yellow at 50%; fast-start curve in upper half for earlier red
     let r, g, b;
     if (pct <= 50) {
       const t = pct / 50;
@@ -19,14 +20,16 @@ const colorSchemes = {
       b = Math.round(60 - 60 * t);
     } else {
       const t = (pct - 50) / 50;
+      const tFast = 1 - (1 - t) * (1 - t);
       r = 220;
-      g = Math.round(200 - 160 * t);
-      b = Math.round(20 * t);
+      g = Math.round(200 - 160 * tFast);
+      b = Math.round(20 * tFast);
     }
     return `\x1b[38;2;${r};${g};${b}m`;
   },
   ocean(pct) {
     // cyan (0,200,200) → blue (40,80,220) → purple (140,40,200)
+    // Linear to blue at 50%; fast-start curve in upper half for earlier escalation
     let r, g, b;
     if (pct <= 50) {
       const t = pct / 50;
@@ -35,14 +38,16 @@ const colorSchemes = {
       b = Math.round(200 + 20 * t);
     } else {
       const t = (pct - 50) / 50;
-      r = Math.round(40 + 100 * t);
-      g = Math.round(80 - 40 * t);
-      b = Math.round(220 - 20 * t);
+      const tFast = 1 - (1 - t) * (1 - t);
+      r = Math.round(40 + 100 * tFast);
+      g = Math.round(80 - 40 * tFast);
+      b = Math.round(220 - 20 * tFast);
     }
     return `\x1b[38;2;${r};${g};${b}m`;
   },
   ember(pct) {
     // warm yellow (200,180,40) → orange (220,120,20) → deep red (180,30,10)
+    // Linear to orange at 50%; fast-start curve in upper half for earlier escalation
     let r, g, b;
     if (pct <= 50) {
       const t = pct / 50;
@@ -51,14 +56,16 @@ const colorSchemes = {
       b = Math.round(40 - 20 * t);
     } else {
       const t = (pct - 50) / 50;
-      r = Math.round(220 - 40 * t);
-      g = Math.round(120 - 90 * t);
-      b = Math.round(20 - 10 * t);
+      const tFast = 1 - (1 - t) * (1 - t);
+      r = Math.round(220 - 40 * tFast);
+      g = Math.round(120 - 90 * tFast);
+      b = Math.round(20 - 10 * tFast);
     }
     return `\x1b[38;2;${r};${g};${b}m`;
   },
   frost(pct) {
     // white (200,210,220) → light blue (100,160,220) → deep blue (30,60,180)
+    // Linear to light blue at 50%; fast-start curve in upper half for earlier escalation
     let r, g, b;
     if (pct <= 50) {
       const t = pct / 50;
@@ -67,9 +74,10 @@ const colorSchemes = {
       b = 220;
     } else {
       const t = (pct - 50) / 50;
-      r = Math.round(100 - 70 * t);
-      g = Math.round(160 - 100 * t);
-      b = Math.round(220 - 40 * t);
+      const tFast = 1 - (1 - t) * (1 - t);
+      r = Math.round(100 - 70 * tFast);
+      g = Math.round(160 - 100 * tFast);
+      b = Math.round(220 - 40 * tFast);
     }
     return `\x1b[38;2;${r};${g};${b}m`;
   },
@@ -116,18 +124,30 @@ const displayRenderers = {
   },
 };
 
+// --- Detect terminal width (subprocess-safe) ---
+function detectTermWidth() {
+  if (process.stdout.columns) return process.stdout.columns;
+  if (process.stderr.columns) return process.stderr.columns;
+  const envCols = parseInt(process.env.COLUMNS, 10);
+  if (envCols > 0) return envCols;
+  return 80;
+}
+
 // --- Read stdin with timeout ---
 function readStdin(timeoutMs) {
+  const MAX_INPUT = 1024 * 1024;
   return new Promise((resolve) => {
     let data = '';
-    const timer = setTimeout(() => {
-      process.stdin.destroy();
-      resolve(data);
-    }, timeoutMs);
+    let done = false;
+    const finish = () => { if (!done) { done = true; clearTimeout(timer); resolve(data); } };
+    const timer = setTimeout(() => { process.stdin.destroy(); finish(); }, timeoutMs);
     process.stdin.setEncoding('utf8');
-    process.stdin.on('data', (chunk) => { data += chunk; });
-    process.stdin.on('end', () => { clearTimeout(timer); resolve(data); });
-    process.stdin.on('error', () => { clearTimeout(timer); resolve(data); });
+    process.stdin.on('data', (chunk) => {
+      data += chunk;
+      if (data.length > MAX_INPUT) { process.stdin.destroy(); finish(); }
+    });
+    process.stdin.on('end', finish);
+    process.stdin.on('error', finish);
     process.stdin.resume();
   });
 }
@@ -146,6 +166,9 @@ function loadConfig() {
   try {
     const cfgPath = path.join(__dirname, 'config.json');
     const loaded = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    delete loaded.__proto__;
+    delete loaded.constructor;
+    delete loaded.prototype;
     // Migrate old display_mode to new display field
     if (loaded.display_mode && !loaded.display) {
       loaded.display = loaded.display_mode;
@@ -288,9 +311,14 @@ async function main() {
   if (typeof cfg.bar_width === 'number' && cfg.bar_width > 0) {
     width = cfg.bar_width;
   } else {
-    const termWidth = process.stdout.columns || 80;
+    const termWidth = detectTermWidth();
     const available = termWidth - textPart.length - 1;
-    width = Math.max(10, Math.min(available, Math.floor(termWidth * 0.4)));
+    if (available < 5) {
+      // Too narrow for a bar — degrade to compact
+      process.stdout.write(`${color}\u25cf${RST} ${textPart}`);
+      return;
+    }
+    width = Math.min(available, Math.floor(termWidth * 0.4));
   }
 
   const renderer = displayRenderers[display] || displayRenderers.bar;
