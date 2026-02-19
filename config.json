@@ -1,9 +1,10 @@
 {
-  "display_mode": "bar",
+  "display": "bar",
+  "color": "gradient",
   "bar_width": "auto",
   "show_cost": true,
   "show_duration": true,
-  "show_lines": false,
+  "show_lines": true,
   "currency_rate": null,
   "weekly_limit": null
 }

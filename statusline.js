@@ -4,14 +4,116 @@
 const fs = require('fs');
 const path = require('path');
 
-// --- ANSI colors ---
-const C = {
-  green:  '\x1b[32m',
-  yellow: '\x1b[33m',
-  orange: '\x1b[38;5;208m',
-  red:    '\x1b[31m',
-  dim:    '\x1b[2m',
-  reset:  '\x1b[0m',
+const RST = '\x1b[0m';
+const DIM = '\x1b[2m';
+
+// --- Color schemes: each maps pct (0-100) to an ANSI 24-bit color ---
+const colorSchemes = {
+  gradient(pct) {
+    // green (40,200,60) → yellow (220,200,0) → red (220,40,20)
+    let r, g, b;
+    if (pct <= 50) {
+      const t = pct / 50;
+      r = Math.round(40 + 180 * t);
+      g = 200;
+      b = Math.round(60 - 60 * t);
+    } else {
+      const t = (pct - 50) / 50;
+      r = 220;
+      g = Math.round(200 - 160 * t);
+      b = Math.round(20 * t);
+    }
+    return `\x1b[38;2;${r};${g};${b}m`;
+  },
+  ocean(pct) {
+    // cyan (0,200,200) → blue (40,80,220) → purple (140,40,200)
+    let r, g, b;
+    if (pct <= 50) {
+      const t = pct / 50;
+      r = Math.round(40 * t);
+      g = Math.round(200 - 120 * t);
+      b = Math.round(200 + 20 * t);
+    } else {
+      const t = (pct - 50) / 50;
+      r = Math.round(40 + 100 * t);
+      g = Math.round(80 - 40 * t);
+      b = Math.round(220 - 20 * t);
+    }
+    return `\x1b[38;2;${r};${g};${b}m`;
+  },
+  ember(pct) {
+    // warm yellow (200,180,40) → orange (220,120,20) → deep red (180,30,10)
+    let r, g, b;
+    if (pct <= 50) {
+      const t = pct / 50;
+      r = Math.round(200 + 20 * t);
+      g = Math.round(180 - 60 * t);
+      b = Math.round(40 - 20 * t);
+    } else {
+      const t = (pct - 50) / 50;
+      r = Math.round(220 - 40 * t);
+      g = Math.round(120 - 90 * t);
+      b = Math.round(20 - 10 * t);
+    }
+    return `\x1b[38;2;${r};${g};${b}m`;
+  },
+  frost(pct) {
+    // white (200,210,220) → light blue (100,160,220) → deep blue (30,60,180)
+    let r, g, b;
+    if (pct <= 50) {
+      const t = pct / 50;
+      r = Math.round(200 - 100 * t);
+      g = Math.round(210 - 50 * t);
+      b = 220;
+    } else {
+      const t = (pct - 50) / 50;
+      r = Math.round(100 - 70 * t);
+      g = Math.round(160 - 100 * t);
+      b = Math.round(220 - 40 * t);
+    }
+    return `\x1b[38;2;${r};${g};${b}m`;
+  },
+};
+
+// --- Display renderers: each returns the visual bar string ---
+const displayRenderers = {
+  bar(pct, width) {
+    const filled = Math.floor(pct * width / 100);
+    const remainder = (pct * width * 10 / 100) % 10;
+    let bar = '\u2588'.repeat(filled);
+    let edgeChars = 0;
+    if (remainder > 0 && filled < width) {
+      bar += remainder >= 5 ? '\u2593' : '\u2592';
+      edgeChars = 1;
+    }
+    bar += '\u2591'.repeat(Math.max(0, width - filled - edgeChars));
+    return bar;
+  },
+  drain(pct, width) {
+    // Reverse: shows remaining capacity draining away
+    const remaining = 100 - pct;
+    const filled = Math.floor(remaining * width / 100);
+    const remainder = (remaining * width * 10 / 100) % 10;
+    let bar = '';
+    const empty = Math.max(0, width - filled - (remainder > 0 && filled < width ? 1 : 0));
+    bar += '\u2591'.repeat(empty);
+    if (remainder > 0 && filled < width) {
+      bar += remainder >= 5 ? '\u2592' : '\u2593';
+    }
+    bar += '\u2588'.repeat(filled);
+    return bar;
+  },
+  dots(pct, width) {
+    const filled = Math.round(pct * width / 100);
+    return '\u25cf'.repeat(filled) + '\u25cb'.repeat(Math.max(0, width - filled));
+  },
+  blocks(pct, width) {
+    const filled = Math.round(pct * width / 100);
+    return '\u28ff'.repeat(filled) + '\u2800'.repeat(Math.max(0, width - filled));
+  },
+  compact() {
+    return null; // handled separately
+  },
 };
 
 // --- Read stdin with timeout ---
@@ -32,34 +134,29 @@ function readStdin(timeoutMs) {
 
 // --- Load config ---
 function loadConfig() {
-  const defaults = { display_mode: 'bar', bar_width: 'auto', show_cost: true, show_duration: true, show_lines: false, currency_rate: null };
+  const defaults = {
+    display: 'bar',
+    color: 'gradient',
+    bar_width: 'auto',
+    show_cost: true,
+    show_duration: true,
+    show_lines: false,
+    currency_rate: null,
+  };
   try {
     const cfgPath = path.join(__dirname, 'config.json');
-    return { ...defaults, ...JSON.parse(fs.readFileSync(cfgPath, 'utf8')) };
+    const loaded = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    // Migrate old display_mode to new display field
+    if (loaded.display_mode && !loaded.display) {
+      loaded.display = loaded.display_mode;
+    }
+    return { ...defaults, ...loaded };
   } catch {
     return defaults;
   }
 }
 
-// --- Smooth gradient color: green → yellow → red via 24-bit true color ---
-function pickColor(pct) {
-  // 0%: green (40,200,60) → 50%: yellow (220,200,0) → 100%: red (220,40,20)
-  let r, g, b;
-  if (pct <= 50) {
-    const t = pct / 50;
-    r = Math.round(40 + (220 - 40) * t);
-    g = Math.round(200 + (200 - 200) * t);
-    b = Math.round(60 + (0 - 60) * t);
-  } else {
-    const t = (pct - 50) / 50;
-    r = Math.round(220 + (220 - 220) * t);
-    g = Math.round(200 + (40 - 200) * t);
-    b = Math.round(0 + (20 - 0) * t);
-  }
-  return `\x1b[38;2;${r};${g};${b}m`;
-}
-
-// --- Format token count: 1500000 -> "1.5m", 96000 -> "96k", 500 -> "500" ---
+// --- Format token count ---
 function fmtTokens(n) {
   if (n >= 1000000) {
     const d = Math.floor(n / 100000);
@@ -76,7 +173,7 @@ function fmtTokens(n) {
   return String(n);
 }
 
-// --- Format duration: ms -> "5s", "12m", "1h30m" ---
+// --- Format duration ---
 function fmtDuration(ms) {
   const totalSec = Math.floor(ms / 1000);
   const h = Math.floor(totalSec / 3600);
@@ -113,7 +210,7 @@ async function main() {
   const input = await readStdin(2000);
 
   if (!input.trim()) {
-    process.stdout.write(`${C.dim}-- no data --${C.reset}`);
+    process.stdout.write(`${DIM}-- no data --${RST}`);
     return;
   }
 
@@ -121,7 +218,7 @@ async function main() {
   try {
     j = JSON.parse(input);
   } catch {
-    process.stdout.write(`${C.dim}-- parse error --${C.reset}`);
+    process.stdout.write(`${DIM}-- parse error --${RST}`);
     return;
   }
 
@@ -141,14 +238,17 @@ async function main() {
 
   // Handle null/early state
   if (pct === -1) {
-    process.stdout.write(`${C.dim}-- waiting --${C.reset}`);
+    process.stdout.write(`${DIM}-- waiting --${RST}`);
     return;
   }
 
   // Clamp
   pct = Math.max(0, Math.min(100, pct));
 
-  const color = pickColor(pct);
+  // Resolve color scheme
+  const colorFn = colorSchemes[cfg.color] || colorSchemes.gradient;
+  const color = colorFn(pct);
+
   const tokensFmt = fmtTokens(inputTokens);
   const ctxFmt = fmtTokens(ctxSize);
 
@@ -158,8 +258,7 @@ async function main() {
   if (cfg.show_cost !== false) {
     let costFmt;
     if (typeof cfg.currency_rate === 'number' && cfg.currency_rate > 0) {
-      const sym = detectCurrencySymbol();
-      costFmt = `${sym}${(costUsd * cfg.currency_rate).toFixed(2)}`;
+      costFmt = `${detectCurrencySymbol()}${(costUsd * cfg.currency_rate).toFixed(2)}`;
     } else {
       costFmt = `$${costUsd.toFixed(2)}`;
     }
@@ -174,40 +273,32 @@ async function main() {
     segments.push(`+${linesAdded} -${linesRemoved}`);
   }
 
-  // Render
-  if (cfg.display_mode === 'compact') {
-    process.stdout.write(`${color}\u25cf${C.reset} ${segments.join(' \u00b7 ')}`);
-  } else {
-    const textPart = ` ${segments.join(' \u00b7 ')}`;
+  const textPart = segments.join(' \u00b7 ');
 
-    // Calculate bar width: fit within terminal, never wrap to 2 lines
-    let width;
-    if (typeof cfg.bar_width === 'number' && cfg.bar_width > 0) {
-      width = cfg.bar_width;
-    } else {
-      const termWidth = process.stdout.columns || 80;
-      const available = termWidth - textPart.length;
-      width = Math.max(10, Math.min(available, Math.floor(termWidth * 0.4)));
-    }
+  // Resolve display type
+  const display = cfg.display || 'bar';
 
-    const filled = Math.floor(pct * width / 100);
-    const remainder = (pct * width * 10 / 100) % 10;
-
-    let bar = '\u2588'.repeat(filled);
-
-    let edgeChars = 0;
-    if (remainder > 0 && filled < width) {
-      bar += remainder >= 5 ? '\u2593' : '\u2592';
-      edgeChars = 1;
-    }
-
-    const empty = width - filled - edgeChars;
-    bar += '\u2591'.repeat(Math.max(0, empty));
-
-    process.stdout.write(`${color}${bar}${C.reset}${textPart}`);
+  if (display === 'compact') {
+    process.stdout.write(`${color}\u25cf${RST} ${textPart}`);
+    return;
   }
+
+  // Calculate bar width
+  let width;
+  if (typeof cfg.bar_width === 'number' && cfg.bar_width > 0) {
+    width = cfg.bar_width;
+  } else {
+    const termWidth = process.stdout.columns || 80;
+    const available = termWidth - textPart.length - 1;
+    width = Math.max(10, Math.min(available, Math.floor(termWidth * 0.4)));
+  }
+
+  const renderer = displayRenderers[display] || displayRenderers.bar;
+  const bar = renderer(pct, width);
+
+  process.stdout.write(`${color}${bar}${RST} ${textPart}`);
 }
 
 main().catch(() => {
-  process.stdout.write(`${C.dim}-- error --${C.reset}`);
+  process.stdout.write(`${DIM}-- error --${RST}`);
 });
