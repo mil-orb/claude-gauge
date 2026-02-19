@@ -31,7 +31,7 @@ Edit `config.json` in the plugin directory:
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `display_mode` | `"bar"` | `"bar"` for progress bar, `"compact"` for minimal dot + numbers |
-| `bar_width` | `"auto"` | `"auto"` to fill terminal width, or a number for fixed width |
+| `bar_width` | `"auto"` | `"auto"` to dynamically fit terminal (default), or a number (e.g. `20`) for fixed width |
 | `show_cost` | `true` | Show session cost |
 | `show_duration` | `true` | Show session elapsed time |
 | `show_lines` | `false` | Show lines added/removed (`+156 -23`) |
@@ -40,7 +40,7 @@ Edit `config.json` in the plugin directory:
 
 ## Requirements
 
-- `jq` on PATH (recommended) or `node` as fallback
+- `node` on PATH (used by default on all platforms)
 
 ## Uninstall
 

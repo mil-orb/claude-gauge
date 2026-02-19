@@ -13,7 +13,7 @@ Displays a color-coded progress bar in the Claude Code status line showing:
 
 Edit `config.json` in the plugin root:
 - `display_mode`: `"bar"` (default) or `"compact"`
-- `bar_width`: `"auto"` (default, fills terminal) or a number for fixed width
+- `bar_width`: `"auto"` (default, dynamically fits terminal) or a number (e.g. `20`) for fixed width
 - `show_cost`: `true` (default) or `false` — show session cost
 - `show_duration`: `true` (default) or `false` — show session elapsed time
 - `show_lines`: `false` (default) or `true` — show lines added/removed
@@ -22,4 +22,4 @@ Edit `config.json` in the plugin root:
 
 ## Dependencies
 
-Requires `jq` on PATH (falls back to `node` if unavailable).
+Requires `node` on PATH (included with Claude Code).
