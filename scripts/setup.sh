@@ -6,7 +6,7 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SETTINGS="$HOME/.claude/settings.json"
 BACKUP="$HOME/.claude/statusline.backup.json"
 # Use node statusline.js — works on all platforms (Windows, macOS, Linux)
-STATUSLINE_CMD="node $PLUGIN_ROOT/statusline.js"
+STATUSLINE_CMD="node \"$PLUGIN_ROOT/statusline.js\""
 
 # Ensure settings file exists
 if [[ ! -f "$SETTINGS" ]]; then
@@ -55,7 +55,65 @@ else
   " "$STATUSLINE_CMD" "$SETTINGS" <<< "$CURRENT"
 fi
 
-# Ensure bash script is also executable (for users who prefer it)
-chmod +x "$PLUGIN_ROOT/statusline.sh" 2>/dev/null || true
+# Start rate limit proxy
+echo "[claude-gauge] Starting rate limit proxy..."
+node "$PLUGIN_ROOT/scripts/proxy-ctl.js" start
 
-echo "[claude-gauge] Setup complete. Restart Claude Code to see the status line."
+# Validate proxy port
+PORT_VAL="${GAUGE_PROXY_PORT:-3456}"
+if [[ ! "$PORT_VAL" =~ ^[0-9]+$ ]] || (( PORT_VAL < 1 || PORT_VAL > 65535 )); then
+  echo "[claude-gauge] ERROR: GAUGE_PROXY_PORT must be a valid port number" >&2
+  exit 1
+fi
+PROXY_URL="http://localhost:${PORT_VAL}"
+ENV_LINE="export ANTHROPIC_BASE_URL=\"$PROXY_URL\""
+
+# Detect shell profile (check $SHELL first, then file existence)
+SHELL_PROFILE=""
+case "$SHELL" in
+  */zsh)  [[ -f "$HOME/.zshrc" ]] && SHELL_PROFILE="$HOME/.zshrc" ;;
+  */bash) [[ -f "$HOME/.bash_profile" ]] && SHELL_PROFILE="$HOME/.bash_profile" ||
+          [[ -f "$HOME/.bashrc" ]] && SHELL_PROFILE="$HOME/.bashrc" ;;
+esac
+if [[ -z "$SHELL_PROFILE" ]]; then
+  if [[ -f "$HOME/.zshrc" ]]; then SHELL_PROFILE="$HOME/.zshrc";
+  elif [[ -f "$HOME/.bash_profile" ]]; then SHELL_PROFILE="$HOME/.bash_profile";
+  elif [[ -f "$HOME/.bashrc" ]]; then SHELL_PROFILE="$HOME/.bashrc";
+  elif [[ -f "$HOME/.profile" ]]; then SHELL_PROFILE="$HOME/.profile";
+  fi
+fi
+
+if [[ -n "$SHELL_PROFILE" ]]; then
+  if ! grep -q 'ANTHROPIC_BASE_URL' "$SHELL_PROFILE" 2>/dev/null; then
+    echo "" >> "$SHELL_PROFILE"
+    echo "# claude-gauge rate limit proxy" >> "$SHELL_PROFILE"
+    echo "$ENV_LINE" >> "$SHELL_PROFILE"
+    echo "[claude-gauge] Added ANTHROPIC_BASE_URL to $SHELL_PROFILE"
+    echo "[claude-gauge] Run: source $SHELL_PROFILE (or restart your shell)"
+  else
+    echo "[claude-gauge] ANTHROPIC_BASE_URL already set in $SHELL_PROFILE"
+  fi
+else
+  echo "[claude-gauge] Could not detect shell profile. Add manually:"
+  echo "  $ENV_LINE"
+fi
+
+echo ""
+echo "  ╔══════════════════════════════════════════╗"
+echo "  ║         claude-gauge installed!           ║"
+echo "  ╠══════════════════════════════════════════╣"
+echo "  ║                                          ║"
+echo "  ║  ⚡ Rate limit fuel gauge is active       ║"
+echo "  ║  📊 Proxy running on port ${PORT_VAL}            ║"
+echo "  ║                                          ║"
+echo "  ║  Configure: /claude-gauge:config          ║"
+echo "  ║  Uninstall: /plugin uninstall claude-gauge║"
+echo "  ║                                          ║"
+echo "  ╚══════════════════════════════════════════╝"
+echo ""
+echo "  Restart Claude Code to see the status line."
+echo ""
+echo "  On Windows? Also run in PowerShell:"
+echo "    [System.Environment]::SetEnvironmentVariable("
+echo "      'ANTHROPIC_BASE_URL','http://localhost:${PORT_VAL}','User')"
+echo ""

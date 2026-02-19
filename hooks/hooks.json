@@ -11,6 +11,18 @@
           }
         ]
       }
+    ],
+    "Uninstall": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/uninstall.sh",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }
