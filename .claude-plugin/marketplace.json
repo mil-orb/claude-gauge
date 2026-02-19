@@ -1,0 +1,15 @@
+{
+  "name": "claude-gauge",
+  "description": "Intuitive context window visualizer for Claude Code",
+  "owner": {
+    "name": ""
+  },
+  "plugins": [
+    {
+      "name": "claude-gauge",
+      "description": "Intuitive context window visualizer for Claude Code - color-coded progress bar in your status line",
+      "version": "1.0.0",
+      "source": "./"
+    }
+  ]
+}

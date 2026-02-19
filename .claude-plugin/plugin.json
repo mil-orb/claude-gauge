@@ -1,0 +1,17 @@
+{
+  "name": "claude-gauge",
+  "version": "1.0.0",
+  "description": "Intuitive context window visualizer for Claude Code - color-coded progress bar in your status line",
+  "author": {
+    "name": ""
+  },
+  "repository": "",
+  "license": "MIT",
+  "keywords": [
+    "statusline",
+    "context",
+    "tokens",
+    "visualizer",
+    "gauge"
+  ]
+}
