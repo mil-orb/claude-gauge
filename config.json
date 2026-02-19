@@ -4,7 +4,7 @@
   "bar_width": "auto",
   "show_cost": true,
   "show_duration": true,
-  "show_lines": true,
+  "show_lines": false,
   "currency_rate": null,
   "weekly_limit": null
 }

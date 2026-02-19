@@ -1,11 +1,11 @@
 {
   "name": "claude-gauge",
   "owner": {
-    "name": "claude-gauge"
+    "name": "mil-orb"
   },
   "metadata": {
     "description": "Context window visualizer for Claude Code",
-    "homepage": "https://github.com/claude-gauge/claude-gauge"
+    "homepage": "https://github.com/mil-orb/claude-gauge"
   },
   "plugins": [
     {
