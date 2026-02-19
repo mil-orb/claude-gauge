@@ -5,7 +5,7 @@
   "author": {
     "name": "mil-orb"
   },
-  "repository": "https://github.com/claude-gauge/claude-gauge",
+  "repository": "https://github.com/mil-orb/claude-gauge",
   "license": "MIT",
   "keywords": [
     "statusline",
