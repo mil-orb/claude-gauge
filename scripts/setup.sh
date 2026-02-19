@@ -5,12 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SETTINGS="$HOME/.claude/settings.json"
 BACKUP="$HOME/.claude/statusline.backup.json"
-# On Windows, .sh files can't be executed directly — prefix with bash
-if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* || "$OSTYPE" == win* ]]; then
-  STATUSLINE_CMD="bash $PLUGIN_ROOT/statusline.sh"
-else
-  STATUSLINE_CMD="$PLUGIN_ROOT/statusline.sh"
-fi
+# Use node statusline.js — works on all platforms (Windows, macOS, Linux)
+STATUSLINE_CMD="node $PLUGIN_ROOT/statusline.js"
 
 # Ensure settings file exists
 if [[ ! -f "$SETTINGS" ]]; then
@@ -59,7 +55,7 @@ else
   " "$STATUSLINE_CMD" "$SETTINGS" <<< "$CURRENT"
 fi
 
-# Ensure statusline.sh is executable
-chmod +x "$PLUGIN_ROOT/statusline.sh"
+# Ensure bash script is also executable (for users who prefer it)
+chmod +x "$PLUGIN_ROOT/statusline.sh" 2>/dev/null || true
 
 echo "[claude-gauge] Setup complete. Restart Claude Code to see the status line."
