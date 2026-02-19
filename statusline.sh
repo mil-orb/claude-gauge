@@ -64,7 +64,7 @@ else
   IFS=$'\t' read -r PCT CTX_SIZE INPUT_TOKENS COST DISPLAY_MODE BAR_WIDTH <<< "$(
     node -e "
       const fs = require('fs');
-      const j = JSON.parse(fs.readFileSync('/dev/stdin', 'utf8'));
+      const j = JSON.parse(fs.readFileSync(0, 'utf8'));
       const cfgPath = process.argv[1] + '/config.json';
       let cfg = { display_mode: 'bar', bar_width: 20 };
       try { cfg = { ...cfg, ...JSON.parse(fs.readFileSync(cfgPath, 'utf8')) }; } catch {}

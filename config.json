@@ -1,4 +1,5 @@
 {
   "display_mode": "bar",
-  "bar_width": 20
+  "bar_width": 20,
+  "weekly_limit": null
 }
