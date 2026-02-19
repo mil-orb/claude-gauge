@@ -1,7 +1,9 @@
 {
   "display_mode": "bar",
   "bar_width": "auto",
+  "show_cost": true,
   "show_duration": true,
+  "show_lines": false,
   "currency_rate": null,
   "weekly_limit": null
 }

@@ -32,7 +32,7 @@ function readStdin(timeoutMs) {
 
 // --- Load config ---
 function loadConfig() {
-  const defaults = { display_mode: 'bar', bar_width: 20, show_duration: true, currency_rate: null };
+  const defaults = { display_mode: 'bar', bar_width: 'auto', show_cost: true, show_duration: true, show_lines: false, currency_rate: null };
   try {
     const cfgPath = path.join(__dirname, 'config.json');
     return { ...defaults, ...JSON.parse(fs.readFileSync(cfgPath, 'utf8')) };
@@ -136,6 +136,8 @@ async function main() {
   const inputTokens = (cu.input_tokens || 0) + (cu.cache_creation_input_tokens || 0) + (cu.cache_read_input_tokens || 0);
   const costUsd = cost.total_cost_usd || 0;
   const durationMs = cost.total_duration_ms || 0;
+  const linesAdded = cost.total_lines_added || 0;
+  const linesRemoved = cost.total_lines_removed || 0;
 
   // Handle null/early state
   if (pct === -1) {
@@ -150,27 +152,33 @@ async function main() {
   const tokensFmt = fmtTokens(inputTokens);
   const ctxFmt = fmtTokens(ctxSize);
 
-  // Currency
-  let costFmt;
-  if (typeof cfg.currency_rate === 'number' && cfg.currency_rate > 0) {
-    const sym = detectCurrencySymbol();
-    costFmt = `${sym}${(costUsd * cfg.currency_rate).toFixed(2)}`;
-  } else {
-    costFmt = `$${costUsd.toFixed(2)}`;
+  // Build optional segments
+  const segments = [`${pct}%`, `${tokensFmt}/${ctxFmt}`];
+
+  if (cfg.show_cost !== false) {
+    let costFmt;
+    if (typeof cfg.currency_rate === 'number' && cfg.currency_rate > 0) {
+      const sym = detectCurrencySymbol();
+      costFmt = `${sym}${(costUsd * cfg.currency_rate).toFixed(2)}`;
+    } else {
+      costFmt = `$${costUsd.toFixed(2)}`;
+    }
+    segments.push(costFmt);
   }
 
-  // Duration
-  let durationSuffix = '';
   if (cfg.show_duration !== false) {
-    durationSuffix = ` \u00b7 ${fmtDuration(durationMs)}`;
+    segments.push(fmtDuration(durationMs));
+  }
+
+  if (cfg.show_lines === true) {
+    segments.push(`+${linesAdded} -${linesRemoved}`);
   }
 
   // Render
   if (cfg.display_mode === 'compact') {
-    process.stdout.write(`${color}\u25cf${C.reset} ${pct}% ${tokensFmt}/${ctxFmt} ${costFmt}${durationSuffix}`);
+    process.stdout.write(`${color}\u25cf${C.reset} ${segments.join(' \u00b7 ')}`);
   } else {
-    // Build the text portion first to measure it
-    const textPart = ` ${pct}% \u00b7 ${tokensFmt}/${ctxFmt} \u00b7 ${costFmt}${durationSuffix}`;
+    const textPart = ` ${segments.join(' \u00b7 ')}`;
 
     // Calculate bar width: fit within terminal, never wrap to 2 lines
     let width;
@@ -179,7 +187,6 @@ async function main() {
     } else {
       const termWidth = process.stdout.columns || 80;
       const available = termWidth - textPart.length;
-      // Use at most half the terminal for the bar, minimum 10
       width = Math.max(10, Math.min(available, Math.floor(termWidth * 0.4)));
     }
 

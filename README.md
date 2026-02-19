@@ -32,7 +32,9 @@ Edit `config.json` in the plugin directory:
 |---------|---------|-------------|
 | `display_mode` | `"bar"` | `"bar"` for progress bar, `"compact"` for minimal dot + numbers |
 | `bar_width` | `"auto"` | `"auto"` to fill terminal width, or a number for fixed width |
+| `show_cost` | `true` | Show session cost |
 | `show_duration` | `true` | Show session elapsed time |
+| `show_lines` | `false` | Show lines added/removed (`+156 -23`) |
 | `currency_rate` | `null` | Exchange rate from USD (e.g. `0.79` for GBP). Currency symbol auto-detected from locale. |
 | `weekly_limit` | `null` | Reserved for future weekly usage tracking |
 
