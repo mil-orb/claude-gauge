@@ -60,6 +60,6 @@ else
 fi
 
 # Ensure statusline.sh is executable
-chmod +x "$STATUSLINE_CMD"
+chmod +x "$PLUGIN_ROOT/statusline.sh"
 
 echo "[claude-gauge] Setup complete. Restart Claude Code to see the status line."
