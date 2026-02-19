@@ -41,12 +41,22 @@ function loadConfig() {
   }
 }
 
-// --- Pick color by percentage ---
+// --- Smooth gradient color: green → yellow → red via 24-bit true color ---
 function pickColor(pct) {
-  if (pct >= 91) return C.red;
-  if (pct >= 76) return C.orange;
-  if (pct >= 51) return C.yellow;
-  return C.green;
+  // 0%: green (40,200,60) → 50%: yellow (220,200,0) → 100%: red (220,40,20)
+  let r, g, b;
+  if (pct <= 50) {
+    const t = pct / 50;
+    r = Math.round(40 + (220 - 40) * t);
+    g = Math.round(200 + (200 - 200) * t);
+    b = Math.round(60 + (0 - 60) * t);
+  } else {
+    const t = (pct - 50) / 50;
+    r = Math.round(220 + (220 - 220) * t);
+    g = Math.round(200 + (40 - 200) * t);
+    b = Math.round(0 + (20 - 0) * t);
+  }
+  return `\x1b[38;2;${r};${g};${b}m`;
 }
 
 // --- Format token count: 1500000 -> "1.5m", 96000 -> "96k", 500 -> "500" ---
