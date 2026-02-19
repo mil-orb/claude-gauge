@@ -1,10 +1,18 @@
 {
+  "//display": "bar: filling gauge, shows what's used | drain: emptying tank, shows what's left | dots: circle pips | blocks: braille blocks | compact: dot + text, no bar",
   "display": "bar",
+  "//color": "gradient: green→yellow→red | ocean: cyan→blue→purple | ember: yellow→orange→red | frost: white→blue | retro: CGA steps | spectrum: per-char gradient | mono: grayscale",
   "color": "gradient",
-  "bar_width": "auto",
-  "show_cost": true,
+  "//bar_size": "small (10) | medium (20) | large (30) | xlarge (40) | or any number",
+  "bar_size": "medium",
+  "//show_cost": "show running session cost in USD",
+  "show_cost": false,
+  "//show_duration": "show elapsed session time",
   "show_duration": true,
+  "//show_lines": "show lines added and removed",
   "show_lines": false,
+  "//currency_rate": "convert cost to local currency, e.g. 0.79 for GBP. symbol auto-detected from locale",
   "currency_rate": null,
-  "weekly_limit": null
+  "//show_rate_limit": "show ⚡ rate limit utilization (requires proxy — see README)",
+  "show_rate_limit": true
 }

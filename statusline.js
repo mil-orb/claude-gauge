@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
 
 const RST = '\x1b[0m';
 const DIM = '\x1b[2m';
@@ -29,7 +30,6 @@ const colorSchemes = {
   },
   ocean(pct) {
     // cyan (0,200,200) → blue (40,80,220) → purple (140,40,200)
-    // Linear to blue at 50%; fast-start curve in upper half for earlier escalation
     let r, g, b;
     if (pct <= 50) {
       const t = pct / 50;
@@ -47,7 +47,6 @@ const colorSchemes = {
   },
   ember(pct) {
     // warm yellow (200,180,40) → orange (220,120,20) → deep red (180,30,10)
-    // Linear to orange at 50%; fast-start curve in upper half for earlier escalation
     let r, g, b;
     if (pct <= 50) {
       const t = pct / 50;
@@ -65,7 +64,6 @@ const colorSchemes = {
   },
   frost(pct) {
     // white (200,210,220) → light blue (100,160,220) → deep blue (30,60,180)
-    // Linear to light blue at 50%; fast-start curve in upper half for earlier escalation
     let r, g, b;
     if (pct <= 50) {
       const t = pct / 50;
@@ -81,57 +79,104 @@ const colorSchemes = {
     }
     return `\x1b[38;2;${r};${g};${b}m`;
   },
+  retro(pct) {
+    // IBM CGA palette: hard color steps, no blending
+    if (pct < 33) return '\x1b[38;2;0;170;0m';
+    if (pct < 66) return '\x1b[38;2;170;170;0m';
+    return '\x1b[38;2;170;0;0m';
+  },
+  spectrum(pct) {
+    // Per-character gradient: each bar char colored by its position
+    // Uses the same green→yellow→red palette as gradient
+    return colorSchemes.gradient(pct);
+  },
+  mono(pct) {
+    // Grayscale: bright white (220) → mid gray (120) → dark (50)
+    let v;
+    if (pct <= 50) {
+      v = Math.round(220 - 100 * (pct / 50));
+    } else {
+      v = Math.round(120 - 70 * ((pct - 50) / 50));
+    }
+    return `\x1b[38;2;${v};${v};${v}m`;
+  },
 };
 
-// --- Display renderers: each returns the visual bar string ---
+// Per-character color schemes: each filled char gets its own color by position
+const PER_CHAR_SCHEMES = new Set(['spectrum']);
+
+// --- Display renderers: each returns a pre-colored bar string ---
+// colorFn(pct) returns ANSI escape; perChar controls per-character vs uniform coloring
 const displayRenderers = {
-  bar(pct, width) {
+  bar(pct, width, colorFn, perChar) {
     const filled = Math.floor(pct * width / 100);
     const remainder = (pct * width * 10 / 100) % 10;
-    let bar = '\u2588'.repeat(filled);
-    let edgeChars = 0;
-    if (remainder > 0 && filled < width) {
-      bar += remainder >= 5 ? '\u2593' : '\u2592';
-      edgeChars = 1;
+    const hasEdge = remainder > 0 && filled < width;
+    let bar = '';
+    if (perChar) {
+      for (let i = 0; i < filled; i++) bar += colorFn(i / width * 100) + '\u2588';
+      if (hasEdge) bar += colorFn(filled / width * 100) + (remainder >= 5 ? '\u2593' : '\u2592');
+    } else {
+      const c = colorFn(pct);
+      bar = c + '\u2588'.repeat(filled);
+      if (hasEdge) bar += remainder >= 5 ? '\u2593' : '\u2592';
     }
-    bar += '\u2591'.repeat(Math.max(0, width - filled - edgeChars));
+    bar += RST + DIM + '\u2591'.repeat(Math.max(0, width - filled - (hasEdge ? 1 : 0))) + RST;
     return bar;
   },
-  drain(pct, width) {
+  drain(pct, width, colorFn, perChar) {
     // Reverse: shows remaining capacity draining away
     const remaining = 100 - pct;
     const filled = Math.floor(remaining * width / 100);
     const remainder = (remaining * width * 10 / 100) % 10;
-    let bar = '';
-    const empty = Math.max(0, width - filled - (remainder > 0 && filled < width ? 1 : 0));
-    bar += '\u2591'.repeat(empty);
-    if (remainder > 0 && filled < width) {
-      bar += remainder >= 5 ? '\u2592' : '\u2593';
+    const hasEdge = remainder > 0 && filled < width;
+    const empty = Math.max(0, width - filled - (hasEdge ? 1 : 0));
+    let bar = DIM + '\u2591'.repeat(empty) + RST;
+    if (perChar) {
+      if (hasEdge) bar += colorFn(empty / width * 100) + (remainder >= 5 ? '\u2593' : '\u2592');
+      for (let i = 0; i < filled; i++) bar += colorFn((empty + (hasEdge ? 1 : 0) + i) / width * 100) + '\u2588';
+    } else {
+      const c = colorFn(pct);
+      if (hasEdge) bar += c + (remainder >= 5 ? '\u2593' : '\u2592');
+      bar += c + '\u2588'.repeat(filled);
     }
-    bar += '\u2588'.repeat(filled);
+    bar += RST;
     return bar;
   },
-  dots(pct, width) {
+  dots(pct, width, colorFn, perChar) {
     const filled = Math.round(pct * width / 100);
-    return '\u25cf'.repeat(filled) + '\u25cb'.repeat(Math.max(0, width - filled));
+    let bar = '';
+    if (perChar) {
+      for (let i = 0; i < filled; i++) bar += colorFn(i / width * 100) + '\u25cf';
+    } else {
+      bar = colorFn(pct) + '\u25cf'.repeat(filled);
+    }
+    bar += RST + DIM + '\u25cb'.repeat(Math.max(0, width - filled)) + RST;
+    return bar;
   },
-  blocks(pct, width) {
+  blocks(pct, width, colorFn, perChar) {
     const filled = Math.round(pct * width / 100);
-    return '\u28ff'.repeat(filled) + '\u2800'.repeat(Math.max(0, width - filled));
+    let bar = '';
+    if (perChar) {
+      for (let i = 0; i < filled; i++) bar += colorFn(i / width * 100) + '\u28ff';
+    } else {
+      bar = colorFn(pct) + '\u28ff'.repeat(filled);
+    }
+    bar += RST + DIM + '\u2800'.repeat(Math.max(0, width - filled)) + RST;
+    return bar;
   },
   compact() {
     return null; // handled separately
   },
 };
 
-// --- Detect terminal width (subprocess-safe) ---
-function detectTermWidth() {
-  if (process.stdout.columns) return process.stdout.columns;
-  if (process.stderr.columns) return process.stderr.columns;
-  const envCols = parseInt(process.env.COLUMNS, 10);
-  if (envCols > 0) return envCols;
-  return 80;
-}
+// --- Bar size presets ---
+const barSizes = {
+  small: 10,
+  medium: 20,
+  large: 30,
+  xlarge: 40,
+};
 
 // --- Read stdin with timeout ---
 function readStdin(timeoutMs) {
@@ -157,23 +202,28 @@ function loadConfig() {
   const defaults = {
     display: 'bar',
     color: 'gradient',
-    bar_width: 'auto',
-    show_cost: true,
+    bar_size: 'medium',
+    show_cost: false,
     show_duration: true,
     show_lines: false,
     currency_rate: null,
+    show_rate_limit: true,
   };
+  const ALLOWED_KEYS = new Set(Object.keys(defaults));
   try {
     const cfgPath = path.join(__dirname, 'config.json');
     const loaded = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    delete loaded.__proto__;
-    delete loaded.constructor;
-    delete loaded.prototype;
-    // Migrate old display_mode to new display field
-    if (loaded.display_mode && !loaded.display) {
-      loaded.display = loaded.display_mode;
+    const result = { ...defaults };
+    for (const key of ALLOWED_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(loaded, key)) {
+        result[key] = loaded[key];
+      }
     }
-    return { ...defaults, ...loaded };
+    // Migrate old bar_width to bar_size
+    if (Object.prototype.hasOwnProperty.call(loaded, 'bar_width') && !Object.prototype.hasOwnProperty.call(loaded, 'bar_size')) {
+      result.bar_size = loaded.bar_width;
+    }
+    return result;
   } catch {
     return defaults;
   }
@@ -199,8 +249,10 @@ function fmtTokens(n) {
 // --- Format duration ---
 function fmtDuration(ms) {
   const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
+  if (d > 0) return `${d}d${h}h`;
   if (h > 0) return `${h}h${String(m).padStart(2, '0')}m`;
   if (m > 0) return `${m}m`;
   return `${totalSec}s`;
@@ -228,6 +280,91 @@ function detectCurrencySymbol() {
   return '$';
 }
 
+// --- Read session tokens from JSONL transcript ---
+const CLAUDE_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
+
+const MAX_JSONL_BYTES = 10 * 1024 * 1024; // 10 MB cap
+
+function readSessionTokens() {
+  try {
+    const resolvedBase = path.resolve(CLAUDE_PROJECTS_DIR);
+    const dirs = fs.readdirSync(CLAUDE_PROJECTS_DIR);
+    const candidates = [];
+    const now = Date.now();
+    for (const dir of dirs) {
+      const dirPath = path.resolve(CLAUDE_PROJECTS_DIR, dir);
+      // Path traversal guard
+      if (!dirPath.startsWith(resolvedBase + path.sep)) continue;
+      let entries;
+      try { entries = fs.readdirSync(dirPath); } catch { continue; }
+      for (const f of entries) {
+        if (!f.endsWith('.jsonl')) continue;
+        const fp = path.join(dirPath, f);
+        try {
+          const st = fs.statSync(fp);
+          // Only consider files modified in the last 5 minutes
+          if (now - st.mtimeMs < 5 * 60 * 1000) {
+            candidates.push({ path: fp, size: st.size, mtime: st.mtimeMs });
+          }
+        } catch { /* skip */ }
+      }
+    }
+    if (candidates.length === 0) return null;
+
+    // Pick most recent first, then largest as tiebreaker
+    candidates.sort((a, b) => b.mtime - a.mtime || b.size - a.size);
+    const chosen = candidates[0];
+
+    // Read file with size cap
+    let content;
+    if (chosen.size > MAX_JSONL_BYTES) {
+      const fd = fs.openSync(chosen.path, 'r');
+      const buf = Buffer.alloc(MAX_JSONL_BYTES);
+      fs.readSync(fd, buf, 0, MAX_JSONL_BYTES, chosen.size - MAX_JSONL_BYTES);
+      fs.closeSync(fd);
+      content = buf.toString('utf8');
+    } else {
+      content = fs.readFileSync(chosen.path, 'utf8');
+    }
+
+    const lines = content.split('\n');
+    let input = 0, output = 0;
+    for (const line of lines) {
+      if (!line || !line.includes('"assistant"')) continue;
+      try {
+        const j = JSON.parse(line);
+        if (j.type !== 'assistant' || !j.message || !j.message.usage) continue;
+        const u = j.message.usage;
+        input += u.input_tokens || 0;
+        output += u.output_tokens || 0;
+      } catch { /* skip malformed lines */ }
+    }
+    const total = input + output;
+    if (total === 0) return null;
+    return { input, output, total };
+  } catch {
+    return null;
+  }
+}
+
+// --- Read rate limit cache ---
+const RATE_LIMIT_CACHE = path.join(os.homedir(), '.claude', 'gauge-rate-limits.json');
+const RATE_LIMIT_STALE_MS = 10 * 60 * 1000; // 10 minutes
+
+function readRateLimit() {
+  try {
+    const st = fs.lstatSync(RATE_LIMIT_CACHE);
+    if (!st.isFile()) return null;
+    const raw = fs.readFileSync(RATE_LIMIT_CACHE, 'utf8');
+    const data = JSON.parse(raw);
+    if (Date.now() - data.ts > RATE_LIMIT_STALE_MS) return null;
+    if (typeof data['5h'] !== 'number' || !Number.isFinite(data['5h'])) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 // --- Main ---
 async function main() {
   const input = await readStdin(2000);
@@ -250,14 +387,14 @@ async function main() {
   const cu = cw.current_usage || {};
   const cost = j.cost || {};
 
-  // Extract values
+  // Extract values — prefer remaining_percentage when available
   let pct = typeof cw.used_percentage === 'number' ? Math.floor(cw.used_percentage) : -1;
-  const ctxSize = cw.context_window_size || 200000;
-  const inputTokens = (cu.input_tokens || 0) + (cu.cache_creation_input_tokens || 0) + (cu.cache_read_input_tokens || 0);
-  const costUsd = cost.total_cost_usd || 0;
-  const durationMs = cost.total_duration_ms || 0;
-  const linesAdded = cost.total_lines_added || 0;
-  const linesRemoved = cost.total_lines_removed || 0;
+  const remainPct = typeof cw.remaining_percentage === 'number' ? Math.floor(cw.remaining_percentage) : -1;
+  const ctxSize = typeof cw.context_window_size === 'number' ? cw.context_window_size : 200000;
+  const costUsd = typeof cost.total_cost_usd === 'number' ? cost.total_cost_usd : 0;
+  const durationMs = typeof cost.total_duration_ms === 'number' ? cost.total_duration_ms : 0;
+  const linesAdded = typeof cost.total_lines_added === 'number' ? cost.total_lines_added : 0;
+  const linesRemoved = typeof cost.total_lines_removed === 'number' ? cost.total_lines_removed : 0;
 
   // Handle null/early state
   if (pct === -1) {
@@ -268,17 +405,47 @@ async function main() {
   // Clamp
   pct = Math.max(0, Math.min(100, pct));
 
-  // Resolve color scheme
-  const colorFn = colorSchemes[cfg.color] || colorSchemes.gradient;
-  const color = colorFn(pct);
+  // Resolve display type and color scheme
+  const display = cfg.display || 'bar';
+  const colorFn = Object.prototype.hasOwnProperty.call(colorSchemes, cfg.color) ? colorSchemes[cfg.color] : colorSchemes.gradient;
+  const perChar = PER_CHAR_SCHEMES.has(cfg.color);
 
-  const tokensFmt = fmtTokens(inputTokens);
   const ctxFmt = fmtTokens(ctxSize);
 
-  // Build optional segments
-  const segments = [`${pct}%`, `${tokensFmt}/${ctxFmt}`];
+  // Rate limit: when available, the BAR shows rate limit utilization
+  const rlData = cfg.show_rate_limit !== false ? readRateLimit() : null;
+  const hasRateLimit = rlData != null;
 
-  if (cfg.show_cost !== false) {
+  // The bar percentage: rate limit utilization or context window used
+  // drain renderer inverts this into a fuel gauge (full = lots remaining)
+  const barPct = hasRateLimit ? Math.max(0, Math.min(100, Math.round(rlData['5h']))) : pct;
+  // Color based on utilization (high = red) — for text segments and compact mode
+  const color = colorFn(barPct);
+
+  // Build text segments
+  const segments = [];
+
+  // Session tokens from JSONL transcript
+  const sessionTokens = readSessionTokens();
+
+  if (hasRateLimit) {
+    // Rate limit is the bar — show ⚡ label + utilization
+    const rl5h = rlData['5h'];
+    segments.push(`\u26a1${rl5h < 10 ? rl5h.toFixed(1) : Math.round(rl5h)}%`);
+    // Session tokens from JSONL
+    if (sessionTokens) {
+      segments.push(fmtTokens(sessionTokens.total));
+    }
+  } else {
+    // No rate limit data — show status + session tokens + session time
+    const noProxySegments = [`${DIM}no proxy${RST}`];
+    if (sessionTokens) noProxySegments.push(fmtTokens(sessionTokens.total));
+    if (cfg.show_duration !== false) noProxySegments.push(fmtDuration(durationMs));
+    process.stdout.write(noProxySegments.join(' \u00b7 '));
+    return;
+  }
+
+  if (cfg.show_cost === true) {
     let costFmt;
     if (typeof cfg.currency_rate === 'number' && cfg.currency_rate > 0) {
       costFmt = `${detectCurrencySymbol()}${(costUsd * cfg.currency_rate).toFixed(2)}`;
@@ -298,33 +465,23 @@ async function main() {
 
   const textPart = segments.join(' \u00b7 ');
 
-  // Resolve display type
-  const display = cfg.display || 'bar';
-
   if (display === 'compact') {
     process.stdout.write(`${color}\u25cf${RST} ${textPart}`);
     return;
   }
 
-  // Calculate bar width
+  // Resolve bar width from size preset or explicit number
   let width;
-  if (typeof cfg.bar_width === 'number' && cfg.bar_width > 0) {
-    width = cfg.bar_width;
+  if (typeof cfg.bar_size === 'number' && cfg.bar_size > 0) {
+    width = Math.min(cfg.bar_size, 100);
   } else {
-    const termWidth = detectTermWidth();
-    const available = termWidth - textPart.length - 1;
-    if (available < 5) {
-      // Too narrow for a bar — degrade to compact
-      process.stdout.write(`${color}\u25cf${RST} ${textPart}`);
-      return;
-    }
-    width = Math.min(available, Math.floor(termWidth * 0.4));
+    width = barSizes[cfg.bar_size] || barSizes.medium;
   }
 
-  const renderer = displayRenderers[display] || displayRenderers.bar;
-  const bar = renderer(pct, width);
+  const renderer = Object.prototype.hasOwnProperty.call(displayRenderers, display) ? displayRenderers[display] : displayRenderers.bar;
+  const bar = renderer(barPct, width, colorFn, perChar);
 
-  process.stdout.write(`${color}${bar}${RST} ${textPart}`);
+  process.stdout.write(`${bar} ${textPart}`);
 }
 
 main().catch(() => {

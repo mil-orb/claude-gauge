@@ -1,5 +1,5 @@
 {
-  "name": "claude-gauge",
+  "name": "mil-orb",
   "owner": {
     "name": "mil-orb"
   },
@@ -12,7 +12,7 @@
       "name": "claude-gauge",
       "version": "1.0.0",
       "source": "./",
-      "description": "Intuitive context window visualizer for Claude Code - color-coded progress bar in your status line"
+      "description": "Context window visualizer for Claude Code - color-coded progress bar in your status line"
     }
   ]
 }
