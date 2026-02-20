@@ -131,7 +131,9 @@ const server = http.createServer((req, res) => {
 
 // Write PID file only after server is actually listening
 server.listen(PORT, '127.0.0.1', () => {
-  fs.writeFileSync(PID_FILE, String(process.pid));
+  if (!process.env.GAUGE_SUPERVISED) {
+    fs.writeFileSync(PID_FILE, String(process.pid));
+  }
   process.stderr.write(`[gauge-proxy] listening on 127.0.0.1:${PORT} → ${TARGET_HOST}\n`);
 });
 
@@ -142,9 +144,20 @@ server.on('error', (err) => {
 });
 
 function cleanup() {
-  try { fs.unlinkSync(PID_FILE); } catch {}
+  if (!process.env.GAUGE_SUPERVISED) {
+    try { fs.unlinkSync(PID_FILE); } catch {}
+  }
   server.close();
 }
 
 process.on('SIGTERM', () => { cleanup(); process.exit(0); });
 process.on('SIGINT', () => { cleanup(); process.exit(0); });
+
+// Crash guard — prevent unexpected errors from killing the proxy.
+// The proxy has no meaningful state between requests, so continuing is safe.
+process.on('uncaughtException', (err) => {
+  try { process.stderr.write(`[gauge-proxy] uncaught: ${err.message}\n`); } catch {}
+});
+process.on('unhandledRejection', (reason) => {
+  try { process.stderr.write(`[gauge-proxy] unhandled rejection: ${reason}\n`); } catch {}
+});

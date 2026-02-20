@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const PROXY_SCRIPT = path.join(__dirname, '..', 'proxy.js');
+const SUPERVISOR_SCRIPT = path.join(__dirname, 'proxy-supervisor.js');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PID_FILE = path.join(CLAUDE_DIR, 'gauge-proxy.pid');
 const PORT = process.env.GAUGE_PROXY_PORT || '3456';
@@ -32,8 +32,8 @@ function isRunning(pid) {
 }
 
 function start() {
-  if (!fs.existsSync(PROXY_SCRIPT)) {
-    console.error('[gauge-proxy] proxy.js not found at', PROXY_SCRIPT);
+  if (!fs.existsSync(SUPERVISOR_SCRIPT)) {
+    console.error('[gauge-proxy] proxy-supervisor.js not found at', SUPERVISOR_SCRIPT);
     process.exit(1);
   }
 
@@ -46,9 +46,10 @@ function start() {
   // Clean stale PID file
   try { fs.unlinkSync(PID_FILE); } catch {}
 
-  const child = spawn(process.execPath, [PROXY_SCRIPT, PORT], {
+  const child = spawn(process.execPath, [SUPERVISOR_SCRIPT, PORT], {
     detached: true,
     stdio: 'ignore',
+    windowsHide: true,
   });
 
   child.on('error', (err) => {
@@ -56,6 +57,8 @@ function start() {
   });
 
   if (child.pid) {
+    // Write supervisor PID — stop kills supervisor, which kills proxy child
+    try { fs.writeFileSync(PID_FILE, String(child.pid)); } catch {}
     child.unref();
     console.log(`[gauge-proxy] started (pid ${child.pid}) on port ${PORT}`);
   }
