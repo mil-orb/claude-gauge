@@ -45,24 +45,13 @@ In Claude Code, run:
 /plugin install claude-gauge
 ```
 
-Then start the proxy and set the environment variable:
+Restart Claude Code. The gauge appears in your status line immediately.
 
-```bash
-# Start the proxy (runs detached)
-node ~/.claude/plugins/claude-gauge/scripts/proxy-ctl.js start
-
-# Set Claude Code to route through the proxy
-# Add to your shell profile (~/.bashrc, ~/.zshrc, etc.)
-export ANTHROPIC_BASE_URL="http://localhost:3456"
-```
-
-Or on Windows, set it system-wide:
+The install hook automatically starts the proxy and adds `ANTHROPIC_BASE_URL` to your shell profile. On Windows, you may also need to set it system-wide:
 
 ```powershell
 [System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', 'http://localhost:3456', 'User')
 ```
-
-Restart Claude Code. The gauge appears in your status line immediately.
 
 ## What You See
 
