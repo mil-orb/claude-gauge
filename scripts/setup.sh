@@ -88,27 +88,14 @@ ENV_LINE="export ANTHROPIC_BASE_URL=\"$PROXY_URL\""
 # Detect shell profile (check $SHELL first, then file existence)
 SHELL_PROFILE=""
 case "$SHELL" in
-  */zsh)
-    [[ -f "$HOME/.zshrc" ]] && SHELL_PROFILE="$HOME/.zshrc"
-    ;;
-  */bash)
-    if [[ -f "$HOME/.bashrc" ]]; then
-      SHELL_PROFILE="$HOME/.bashrc"
-    elif [[ -f "$HOME/.bash_profile" ]]; then
-      SHELL_PROFILE="$HOME/.bash_profile"
-    fi
-    ;;
-  */fish)
-    FISH_CONFIG="$HOME/.config/fish/config.fish"
-    if [[ -f "$FISH_CONFIG" ]]; then
-      SHELL_PROFILE="$FISH_CONFIG"
-    fi
-    ;;
+  */zsh)  [[ -f "$HOME/.zshrc" ]] && SHELL_PROFILE="$HOME/.zshrc" ;;
+  */bash) [[ -f "$HOME/.bash_profile" ]] && SHELL_PROFILE="$HOME/.bash_profile" ||
+          [[ -f "$HOME/.bashrc" ]] && SHELL_PROFILE="$HOME/.bashrc" ;;
 esac
 if [[ -z "$SHELL_PROFILE" ]]; then
   if [[ -f "$HOME/.zshrc" ]]; then SHELL_PROFILE="$HOME/.zshrc";
-  elif [[ -f "$HOME/.bashrc" ]]; then SHELL_PROFILE="$HOME/.bashrc";
   elif [[ -f "$HOME/.bash_profile" ]]; then SHELL_PROFILE="$HOME/.bash_profile";
+  elif [[ -f "$HOME/.bashrc" ]]; then SHELL_PROFILE="$HOME/.bashrc";
   elif [[ -f "$HOME/.profile" ]]; then SHELL_PROFILE="$HOME/.profile";
   fi
 fi
@@ -117,11 +104,7 @@ if [[ -n "$SHELL_PROFILE" ]]; then
   if ! grep -q 'ANTHROPIC_BASE_URL' "$SHELL_PROFILE" 2>/dev/null; then
     echo "" >> "$SHELL_PROFILE"
     echo "# claude-gauge rate limit proxy" >> "$SHELL_PROFILE"
-    if [[ "$SHELL" == */fish ]]; then
-      echo "set -gx ANTHROPIC_BASE_URL \"$PROXY_URL\"" >> "$SHELL_PROFILE"
-    else
-      echo "$ENV_LINE" >> "$SHELL_PROFILE"
-    fi
+    echo "$ENV_LINE" >> "$SHELL_PROFILE"
     echo "[claude-gauge] Added ANTHROPIC_BASE_URL to $SHELL_PROFILE"
     echo "[claude-gauge] Run: source $SHELL_PROFILE (or restart your shell)"
   else

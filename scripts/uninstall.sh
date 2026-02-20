@@ -46,7 +46,7 @@ else
 fi
 
 # Remove ANTHROPIC_BASE_URL from shell profiles
-for profile in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile" "$HOME/.config/fish/config.fish"; do
+for profile in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do
   if [[ -f "$profile" ]] && grep -q 'ANTHROPIC_BASE_URL' "$profile" 2>/dev/null; then
     # Remove the export line and the comment above it
     if command -v sed &>/dev/null; then
