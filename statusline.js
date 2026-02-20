@@ -105,6 +105,11 @@ const colorSchemes = {
 // Per-character color schemes: each filled char gets its own color by position
 const PER_CHAR_SCHEMES = new Set(['spectrum']);
 
+// Dithered edge: dark shade (▓) for high fill, medium shade (▒) for low fill
+function edgeChar(remainder) {
+  return remainder >= 5 ? '\u2593' : '\u2592';
+}
+
 // --- Display renderers: each returns a pre-colored bar string ---
 // colorFn(pct) returns ANSI escape; perChar controls per-character vs uniform coloring
 const displayRenderers = {
@@ -115,11 +120,11 @@ const displayRenderers = {
     let bar = '';
     if (perChar) {
       for (let i = 0; i < filled; i++) bar += colorFn(i / width * 100) + '\u2588';
-      if (hasEdge) bar += colorFn(filled / width * 100) + (remainder >= 5 ? '\u2593' : '\u2592');
+      if (hasEdge) bar += colorFn(filled / width * 100) + edgeChar(remainder);
     } else {
       const c = colorFn(pct);
       bar = c + '\u2588'.repeat(filled);
-      if (hasEdge) bar += remainder >= 5 ? '\u2593' : '\u2592';
+      if (hasEdge) bar += edgeChar(remainder);
     }
     bar += RST + DIM + '\u2591'.repeat(Math.max(0, width - filled - (hasEdge ? 1 : 0))) + RST;
     return bar;
@@ -133,11 +138,11 @@ const displayRenderers = {
     const empty = Math.max(0, width - filled - (hasEdge ? 1 : 0));
     let bar = DIM + '\u2591'.repeat(empty) + RST;
     if (perChar) {
-      if (hasEdge) bar += colorFn(empty / width * 100) + (remainder >= 5 ? '\u2593' : '\u2592');
+      if (hasEdge) bar += colorFn(empty / width * 100) + edgeChar(remainder);
       for (let i = 0; i < filled; i++) bar += colorFn((empty + (hasEdge ? 1 : 0) + i) / width * 100) + '\u2588';
     } else {
       const c = colorFn(pct);
-      if (hasEdge) bar += c + (remainder >= 5 ? '\u2593' : '\u2592');
+      if (hasEdge) bar += c + edgeChar(remainder);
       bar += c + '\u2588'.repeat(filled);
     }
     bar += RST;
@@ -417,8 +422,9 @@ async function main() {
   const hasRateLimit = rlData != null;
 
   // The bar percentage: rate limit utilization or context window used
+  // API returns utilization as a fraction (0–1), convert to percentage
   // drain renderer inverts this into a fuel gauge (full = lots remaining)
-  const barPct = hasRateLimit ? Math.max(0, Math.min(100, Math.round(rlData['5h']))) : pct;
+  const barPct = hasRateLimit ? Math.max(0, Math.min(100, Math.round(rlData['5h'] * 100))) : pct;
   // Color based on utilization (high = red) — for text segments and compact mode
   const color = colorFn(barPct);
 
@@ -430,7 +436,7 @@ async function main() {
 
   if (hasRateLimit) {
     // Rate limit is the bar — show ⚡ label + utilization
-    const rl5h = rlData['5h'];
+    const rl5h = rlData['5h'] * 100;
     segments.push(`\u26a1${rl5h < 10 ? rl5h.toFixed(1) : Math.round(rl5h)}%`);
     // Session tokens from JSONL
     if (sessionTokens) {
