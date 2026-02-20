@@ -37,6 +37,16 @@ function writeCache(headers) {
   const parsed5h = h5 != null ? parseFloat(h5) : null;
   const parsed7d = h7 != null ? parseFloat(h7) : null;
 
+  // Don't let a zero reading overwrite a recent non-zero value —
+  // utilization can't drop to exactly 0 during an active session.
+  if (parsed5h === 0) {
+    try {
+      const prev = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+      if (typeof prev['5h'] === 'number' && prev['5h'] > 0 &&
+          Date.now() - prev.ts < 5 * 60 * 1000) return;
+    } catch { /* no previous cache, allow write */ }
+  }
+
   const data = {
     '5h': Number.isFinite(parsed5h) ? parsed5h : null,
     '7d': Number.isFinite(parsed7d) ? parsed7d : null,
@@ -102,7 +112,9 @@ const server = http.createServer((req, res) => {
   };
 
   const proxyReq = https.request(opts, (proxyRes) => {
-    writeCache(proxyRes.headers);
+    // Only cache rate limits from /v1/messages — other endpoints may return
+    // stale/zero utilization values that overwrite the real reading.
+    if (req.url.startsWith('/v1/messages')) writeCache(proxyRes.headers);
     res.writeHead(proxyRes.statusCode, filterHeaders(proxyRes.headers));
     proxyRes.on('error', (err) => {
       process.stderr.write(`[gauge-proxy] response stream error: ${err.message}\n`);
