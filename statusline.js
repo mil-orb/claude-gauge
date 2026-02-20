@@ -443,12 +443,10 @@ async function main() {
       segments.push(fmtTokens(sessionTokens.total));
     }
   } else {
-    // No rate limit data — show status + session tokens + session time
-    const noProxySegments = [`${DIM}no proxy${RST}`];
-    if (sessionTokens) noProxySegments.push(fmtTokens(sessionTokens.total));
-    if (cfg.show_duration !== false) noProxySegments.push(fmtDuration(durationMs));
-    process.stdout.write(noProxySegments.join(' \u00b7 '));
-    return;
+    // No rate limit data — show session metrics only (tokens, cost, duration)
+    if (sessionTokens) {
+      segments.push(fmtTokens(sessionTokens.total));
+    }
   }
 
   if (cfg.show_cost !== false) {

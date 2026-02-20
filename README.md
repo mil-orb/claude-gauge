@@ -55,7 +55,9 @@ The install hook automatically starts the proxy and adds `ANTHROPIC_BASE_URL` to
 
 ## What You See
 
-**With proxy running** — the bar shows your rate limit utilization:
+<p align="center">
+  <img src="assets/screenshot.png" alt="claude-gauge in Claude Code" width="580">
+</p>
 
 ```
 ████████▒░░░░░░░░░░░ ⚡32% · 47.9k · $1.84 · 3m
@@ -71,13 +73,7 @@ The install hook automatically starts the proxy and adds `ANTHROPIC_BASE_URL` to
 - `⚡32%` — your 5-hour rolling utilization percentage
 - Session tokens are read from Claude Code's local JSONL transcript files
 
-**Without proxy** — minimal fallback:
-
-```
-no proxy · 47.9k · 3m
-```
-
-Shows session tokens and duration. No bar rendered.
+**Without proxy** — session metrics are still shown (tokens, cost, duration) without the rate limit bar.
 
 ## Display Types
 
