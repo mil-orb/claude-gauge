@@ -2,6 +2,7 @@
 'use strict';
 
 const { spawn } = require('node:child_process');
+const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -31,7 +32,17 @@ function isRunning(pid) {
   }
 }
 
-function start() {
+// Check if the port is already bound by another process
+function isPortInUse(port) {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once('error', () => resolve(true));
+    srv.once('listening', () => { srv.close(); resolve(false); });
+    srv.listen(parseInt(port, 10), '127.0.0.1');
+  });
+}
+
+async function start() {
   if (!fs.existsSync(SUPERVISOR_SCRIPT)) {
     console.error('[gauge-proxy] proxy-supervisor.js not found at', SUPERVISOR_SCRIPT);
     process.exit(1);
@@ -40,6 +51,15 @@ function start() {
   const existing = readPid();
   if (existing && isRunning(existing)) {
     console.log(`[gauge-proxy] already running (pid ${existing})`);
+    return;
+  }
+
+  // Check if an orphan proxy is holding the port
+  const portBusy = await isPortInUse(PORT);
+  if (portBusy) {
+    console.log(`[gauge-proxy] port ${PORT} already in use (orphan proxy or another process)`);
+    // Clean stale PID file since the supervisor is gone
+    try { fs.unlinkSync(PID_FILE); } catch {}
     return;
   }
 
@@ -66,35 +86,33 @@ function start() {
 
 function stop() {
   const pid = readPid();
-  if (!pid) {
-    console.log('[gauge-proxy] not running (no PID file)');
-    return;
-  }
-  if (!isRunning(pid)) {
-    console.log('[gauge-proxy] not running (stale PID file)');
-    try { fs.unlinkSync(PID_FILE); } catch {}
-    return;
-  }
-  try {
-    process.kill(pid, 'SIGTERM');
-    console.log(`[gauge-proxy] stopped (pid ${pid})`);
-  } catch (err) {
-    console.error(`[gauge-proxy] failed to stop: ${err.message}`);
+  if (pid && isRunning(pid)) {
+    try {
+      process.kill(pid, 'SIGTERM');
+      console.log(`[gauge-proxy] stopped (pid ${pid})`);
+    } catch (err) {
+      console.error(`[gauge-proxy] failed to stop: ${err.message}`);
+    }
+  } else if (!pid) {
+    console.log('[gauge-proxy] no PID file found');
+  } else {
+    console.log('[gauge-proxy] stale PID file (process already gone)');
   }
   try { fs.unlinkSync(PID_FILE); } catch {}
 }
 
-function status() {
+async function status() {
   const pid = readPid();
-  if (!pid) {
-    console.log('[gauge-proxy] not running');
-    return;
-  }
-  if (isRunning(pid)) {
+  const portBusy = await isPortInUse(PORT);
+
+  if (pid && isRunning(pid)) {
     console.log(`[gauge-proxy] running (pid ${pid}) on port ${PORT}`);
-  } else {
-    console.log('[gauge-proxy] not running (stale PID file)');
+  } else if (portBusy) {
+    console.log(`[gauge-proxy] port ${PORT} in use (orphan proxy — PID file stale or missing)`);
     try { fs.unlinkSync(PID_FILE); } catch {}
+  } else {
+    console.log('[gauge-proxy] not running');
+    if (pid) try { fs.unlinkSync(PID_FILE); } catch {}
   }
 }
 

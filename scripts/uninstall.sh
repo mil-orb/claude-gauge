@@ -49,11 +49,14 @@ fi
 for profile in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do
   if [[ -f "$profile" ]] && grep -q 'claude-gauge rate limit proxy' "$profile" 2>/dev/null; then
     if command -v sed &>/dev/null; then
-      # Remove the conditional block (comment, if/curl, export, fi) and legacy single-line export
-      sed -i.bak '/# claude-gauge rate limit proxy/d' "$profile"
-      sed -i.bak '/curl.*--connect-timeout.*ANTHROPIC_BASE_URL\|if curl.*gauge/d' "$profile"
-      sed -i.bak '/export ANTHROPIC_BASE_URL.*localhost/d' "$profile"
-      sed -i.bak '/^fi$/{ N; /^fi\n$/d; }' "$profile"
+      if grep -q 'claude-gauge rate limit proxy (conditional' "$profile" 2>/dev/null; then
+        # New conditional block: delete from comment line through closing fi
+        sed -i.bak '/# claude-gauge rate limit proxy (conditional/,/^fi$/d' "$profile"
+      else
+        # Legacy single-line format: comment + export
+        sed -i.bak '/# claude-gauge rate limit proxy/d' "$profile"
+        sed -i.bak '/export ANTHROPIC_BASE_URL.*localhost/d' "$profile"
+      fi
       # Clean up any leftover ANTHROPIC_BASE_URL lines from gauge
       sed -i.bak '/ANTHROPIC_BASE_URL.*localhost.*3456/d' "$profile"
       rm -f "$profile.bak"
@@ -65,9 +68,13 @@ done
 echo ""
 echo "[claude-gauge] Uninstall complete."
 echo ""
-echo "  If you set ANTHROPIC_BASE_URL via Windows environment variables,"
-echo "  remove it manually:"
-echo ""
-echo "    [System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', \$null, 'User')"
-echo ""
+# On Windows, remove the user-level environment variable automatically
+if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* || "${OS:-}" == "Windows_NT" ]]; then
+  WIN_VAL=$(powershell.exe -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL', 'User')" 2>/dev/null | tr -d '\r')
+  if [[ -n "$WIN_VAL" && "$WIN_VAL" == *"localhost"* ]]; then
+    powershell.exe -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', \$null, 'User')" 2>/dev/null
+    echo "[claude-gauge] Removed Windows ANTHROPIC_BASE_URL"
+  fi
+fi
 echo "  Restart your shell to apply changes."
+echo ""

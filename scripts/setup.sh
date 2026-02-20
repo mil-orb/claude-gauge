@@ -8,6 +8,47 @@ BACKUP="$HOME/.claude/statusline.backup.json"
 # Use node statusline.js — works on all platforms (Windows, macOS, Linux)
 STATUSLINE_CMD="node \"$PLUGIN_ROOT/statusline.js\""
 
+PORT_VAL="${GAUGE_PROXY_PORT:-3456}"
+PROXY_URL="http://localhost:${PORT_VAL}"
+
+IS_WINDOWS=false
+if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* || "${OS:-}" == "Windows_NT" ]]; then
+  IS_WINDOWS=true
+fi
+
+# --- Helper: verify proxy is accepting connections (uses node, no curl dependency) ---
+proxy_is_alive() {
+  node -e "
+    const s = require('net').createConnection(${PORT_VAL}, '127.0.0.1');
+    s.on('connect', () => { s.destroy(); process.exit(0); });
+    s.on('error', () => process.exit(1));
+    setTimeout(() => process.exit(1), 500);
+  " 2>/dev/null
+}
+
+# --- Helper: manage Windows env var based on proxy health ---
+sync_windows_env() {
+  if [[ "$IS_WINDOWS" != "true" ]]; then return; fi
+
+  if proxy_is_alive; then
+    # Proxy is up — ensure env var is set
+    local current
+    current=$(powershell.exe -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL', 'User')" 2>/dev/null | tr -d '\r')
+    if [[ "$current" != "$PROXY_URL" ]]; then
+      powershell.exe -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', '$PROXY_URL', 'User')" 2>/dev/null
+      echo "[claude-gauge] Set Windows ANTHROPIC_BASE_URL=$PROXY_URL"
+    fi
+  else
+    # Proxy is down — clear env var to prevent ECONNREFUSED on next session
+    local current
+    current=$(powershell.exe -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL', 'User')" 2>/dev/null | tr -d '\r')
+    if [[ -n "$current" && "$current" == *"localhost"* ]]; then
+      powershell.exe -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', \$null, 'User')" 2>/dev/null
+      echo "[claude-gauge] Cleared Windows ANTHROPIC_BASE_URL (proxy not reachable)"
+    fi
+  fi
+}
+
 # Ensure settings file exists
 if [[ ! -f "$SETTINGS" ]]; then
   echo '{}' > "$SETTINGS"
@@ -22,7 +63,7 @@ fi
 # Read current settings
 CURRENT=$(cat "$SETTINGS")
 
-# Check if statusline already points to claude-gauge (skip if so)
+# Check if statusline already points to claude-gauge (repeat session fast path)
 ALREADY_SET="false"
 if command -v jq &>/dev/null; then
   ALREADY_SET=$(jq -r '.statusLine.command // "" | test("claude-gauge") | tostring' <<< "$CURRENT" 2>/dev/null || echo "false")
@@ -34,9 +75,20 @@ else
 fi
 
 if [[ "$ALREADY_SET" == "true" ]]; then
-  # Already configured — just ensure proxy is running
+  # Already configured — ensure proxy is running and env var is correct
   node "$PLUGIN_ROOT/scripts/proxy-ctl.js" start 2>/dev/null || true
+  # Give proxy a moment to bind if just started
+  sleep 0.3 2>/dev/null || true
+  sync_windows_env
   exit 0
+fi
+
+# --- First-time install path below ---
+
+# Validate proxy port
+if [[ ! "$PORT_VAL" =~ ^[0-9]+$ ]] || (( PORT_VAL < 1 || PORT_VAL > 65535 )); then
+  echo "[claude-gauge] ERROR: GAUGE_PROXY_PORT must be a valid port number" >&2
+  exit 1
 fi
 
 # Backup existing statusline config if present
@@ -76,13 +128,8 @@ fi
 echo "[claude-gauge] Starting rate limit proxy..."
 node "$PLUGIN_ROOT/scripts/proxy-ctl.js" start
 
-# Validate proxy port
-PORT_VAL="${GAUGE_PROXY_PORT:-3456}"
-if [[ ! "$PORT_VAL" =~ ^[0-9]+$ ]] || (( PORT_VAL < 1 || PORT_VAL > 65535 )); then
-  echo "[claude-gauge] ERROR: GAUGE_PROXY_PORT must be a valid port number" >&2
-  exit 1
-fi
-PROXY_URL="http://localhost:${PORT_VAL}"
+# Give proxy a moment to bind
+sleep 0.3 2>/dev/null || true
 
 # Detect shell profile (check $SHELL first, then file existence)
 SHELL_PROFILE=""
@@ -101,10 +148,14 @@ fi
 
 # Conditional export: only set ANTHROPIC_BASE_URL if the proxy is reachable.
 # If the proxy is down, Claude Code talks directly to the API — no ECONNREFUSED.
+# Uses node (already a hard dependency) instead of curl for portability.
 ENV_BLOCK="# claude-gauge rate limit proxy (conditional — falls back to direct API)
-if curl -s --connect-timeout 0.3 $PROXY_URL/ >/dev/null 2>&1; then
+if node -e \"const n=require('net');const s=n.createConnection(${PORT_VAL},'127.0.0.1');s.on('connect',()=>{s.destroy();process.exit(0)});s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),300)\" 2>/dev/null; then
   export ANTHROPIC_BASE_URL=\"$PROXY_URL\"
 fi"
+
+# On Windows, set or clear the user-level env var based on proxy health.
+sync_windows_env
 
 if [[ -n "$SHELL_PROFILE" ]]; then
   if grep -q 'claude-gauge rate limit proxy (conditional' "$SHELL_PROFILE" 2>/dev/null; then
@@ -143,8 +194,4 @@ echo "  ║                                          ║"
 echo "  ╚══════════════════════════════════════════╝"
 echo ""
 echo "  Restart Claude Code to see the status line."
-echo ""
-echo "  On Windows? Also run in PowerShell:"
-echo "    [System.Environment]::SetEnvironmentVariable("
-echo "      'ANTHROPIC_BASE_URL','http://localhost:${PORT_VAL}','User')"
 echo ""

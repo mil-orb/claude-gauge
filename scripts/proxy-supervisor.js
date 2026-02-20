@@ -11,9 +11,9 @@ const path = require('node:path');
 const PROXY_SCRIPT = path.join(__dirname, '..', 'proxy.js');
 const PORT = process.argv[2] || '3456';
 
-const MIN_BACKOFF = 1000;
-const MAX_BACKOFF = 30000;
-const HEALTHY_THRESHOLD = 60000;
+const MIN_BACKOFF = 500;
+const MAX_BACKOFF = 5000;
+const HEALTHY_THRESHOLD = 30000;
 
 let backoff = MIN_BACKOFF;
 let lastStart = 0;

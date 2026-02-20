@@ -469,6 +469,12 @@ async function main() {
 
   const textPart = segments.join(' \u00b7 ');
 
+  // Hide bar when rate limit is enabled but data is stale/unavailable
+  if (cfg.show_rate_limit !== false && !hasRateLimit) {
+    process.stdout.write(textPart);
+    return;
+  }
+
   if (display === 'compact') {
     process.stdout.write(`${color}\u25cf${RST} ${textPart}`);
     return;

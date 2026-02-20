@@ -150,17 +150,30 @@ Set `"show_rate_limit": false` in config.json to disable rate limit tracking ent
 
 **`ECONNREFUSED` errors / Claude Code can't reach the API**
 
-If the proxy is down and `ANTHROPIC_BASE_URL` still points to it, API calls will fail. To fix immediately:
+If the proxy is down and `ANTHROPIC_BASE_URL` still points to it, API calls will fail. Quick fix by platform:
 
-```bash
-# Option 1: Run the uninstall cleanup script
-bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
-
-# Option 2: Unset the env var for the current session
-unset ANTHROPIC_BASE_URL
+**Windows (PowerShell):**
+```powershell
+# Remove the env var so Claude Code talks directly to the API
+[System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $null, 'User')
+# Then restart Claude Code
 ```
 
-Then restart Claude Code. Re-running setup will install the newer conditional export that avoids this issue:
+**macOS / Linux:**
+```bash
+# Immediate fix for the current session
+unset ANTHROPIC_BASE_URL
+
+# Permanent fix — remove the export from your shell profile
+# Check ~/.zshrc, ~/.bash_profile, or ~/.bashrc for the claude-gauge block and delete it
+```
+
+**All platforms — nuclear option:**
+```bash
+bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
+```
+
+Then restart Claude Code. Re-running setup will install the newer conditional export that avoids this issue going forward:
 
 ```bash
 bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/setup.sh
@@ -188,16 +201,10 @@ In Claude Code, run:
 /plugin uninstall claude-gauge
 ```
 
-Then run the cleanup script to remove shell profile entries and stop the proxy:
+Then run the cleanup script to remove shell profile entries, stop the proxy, and clean up environment variables:
 
 ```bash
 bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
-```
-
-On Windows, also remove the system variable:
-
-```powershell
-[System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $null, 'User')
 ```
 
 ## Requirements
