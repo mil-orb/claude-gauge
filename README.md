@@ -156,7 +156,17 @@ In Claude Code, run:
 /plugin uninstall claude-gauge
 ```
 
-The uninstall hook automatically stops the proxy and removes `ANTHROPIC_BASE_URL` from your shell profile. For Windows users who set the variable via PowerShell, remove it manually:
+Then clean up manually:
+
+```bash
+# Stop the proxy
+node ~/.claude/plugins/cache/mil-orb/claude-gauge/1.0.0/scripts/proxy-ctl.js stop
+
+# Remove ANTHROPIC_BASE_URL from your shell profile (~/.bashrc, ~/.zshrc, etc.)
+# Delete the line: export ANTHROPIC_BASE_URL="http://localhost:3456"
+```
+
+On Windows, also remove the system variable:
 
 ```powershell
 [System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $null, 'User')
