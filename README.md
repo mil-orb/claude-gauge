@@ -47,7 +47,9 @@ In Claude Code, run:
 
 Restart Claude Code. The gauge appears in your status line immediately.
 
-The install hook automatically starts the proxy and adds `ANTHROPIC_BASE_URL` to your shell profile. On Windows, you may also need to set it system-wide:
+The install hook automatically starts the proxy and adds a **conditional** `ANTHROPIC_BASE_URL` to your shell profile — the env var is only set when the proxy is reachable, so if the proxy is down, Claude Code talks directly to the API instead of failing.
+
+On Windows, you may also need to set it system-wide:
 
 ```powershell
 [System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', 'http://localhost:3456', 'User')
@@ -144,6 +146,40 @@ Cache staleness: if the proxy hasn't updated the cache in 10 minutes, the gauge 
 
 Set `"show_rate_limit": false` in config.json to disable rate limit tracking entirely.
 
+## Troubleshooting
+
+**`ECONNREFUSED` errors / Claude Code can't reach the API**
+
+If the proxy is down and `ANTHROPIC_BASE_URL` still points to it, API calls will fail. To fix immediately:
+
+```bash
+# Option 1: Run the uninstall cleanup script
+bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
+
+# Option 2: Unset the env var for the current session
+unset ANTHROPIC_BASE_URL
+```
+
+Then restart Claude Code. Re-running setup will install the newer conditional export that avoids this issue:
+
+```bash
+bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/setup.sh
+```
+
+**Proxy not starting**
+
+```bash
+# Check status
+node ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/proxy-ctl.js status
+
+# Restart it
+node ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/proxy-ctl.js start
+```
+
+**Stale rate limit data**
+
+If the gauge shows old data, the proxy may have stopped updating. Restart it with the command above. The gauge automatically hides rate limit data when the cache is older than 10 minutes.
+
 ## Uninstall
 
 In Claude Code, run:
@@ -152,14 +188,10 @@ In Claude Code, run:
 /plugin uninstall claude-gauge
 ```
 
-Then clean up manually:
+Then run the cleanup script to remove shell profile entries and stop the proxy:
 
 ```bash
-# Stop the proxy
-node ~/.claude/plugins/cache/mil-orb/claude-gauge/1.0.0/scripts/proxy-ctl.js stop
-
-# Remove ANTHROPIC_BASE_URL from your shell profile (~/.bashrc, ~/.zshrc, etc.)
-# Delete the line: export ANTHROPIC_BASE_URL="http://localhost:3456"
+bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
 ```
 
 On Windows, also remove the system variable:

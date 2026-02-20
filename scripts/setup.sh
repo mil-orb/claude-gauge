@@ -83,7 +83,6 @@ if [[ ! "$PORT_VAL" =~ ^[0-9]+$ ]] || (( PORT_VAL < 1 || PORT_VAL > 65535 )); th
   exit 1
 fi
 PROXY_URL="http://localhost:${PORT_VAL}"
-ENV_LINE="export ANTHROPIC_BASE_URL=\"$PROXY_URL\""
 
 # Detect shell profile (check $SHELL first, then file existence)
 SHELL_PROFILE=""
@@ -100,19 +99,34 @@ if [[ -z "$SHELL_PROFILE" ]]; then
   fi
 fi
 
+# Conditional export: only set ANTHROPIC_BASE_URL if the proxy is reachable.
+# If the proxy is down, Claude Code talks directly to the API — no ECONNREFUSED.
+ENV_BLOCK="# claude-gauge rate limit proxy (conditional — falls back to direct API)
+if curl -s --connect-timeout 0.3 $PROXY_URL/ >/dev/null 2>&1; then
+  export ANTHROPIC_BASE_URL=\"$PROXY_URL\"
+fi"
+
 if [[ -n "$SHELL_PROFILE" ]]; then
-  if ! grep -q 'ANTHROPIC_BASE_URL' "$SHELL_PROFILE" 2>/dev/null; then
+  if grep -q 'claude-gauge rate limit proxy (conditional' "$SHELL_PROFILE" 2>/dev/null; then
+    # Already has the new conditional block
+    echo "[claude-gauge] claude-gauge already configured in $SHELL_PROFILE"
+  elif grep -q 'claude-gauge rate limit proxy' "$SHELL_PROFILE" 2>/dev/null; then
+    # Upgrade: remove old static export and replace with conditional block
+    sed -i.bak '/# claude-gauge rate limit proxy/d' "$SHELL_PROFILE"
+    sed -i.bak '/export ANTHROPIC_BASE_URL.*localhost/d' "$SHELL_PROFILE"
+    rm -f "$SHELL_PROFILE.bak"
     echo "" >> "$SHELL_PROFILE"
-    echo "# claude-gauge rate limit proxy" >> "$SHELL_PROFILE"
-    echo "$ENV_LINE" >> "$SHELL_PROFILE"
-    echo "[claude-gauge] Added ANTHROPIC_BASE_URL to $SHELL_PROFILE"
-    echo "[claude-gauge] Run: source $SHELL_PROFILE (or restart your shell)"
+    echo "$ENV_BLOCK" >> "$SHELL_PROFILE"
+    echo "[claude-gauge] Upgraded ANTHROPIC_BASE_URL to conditional mode in $SHELL_PROFILE"
   else
-    echo "[claude-gauge] ANTHROPIC_BASE_URL already set in $SHELL_PROFILE"
+    echo "" >> "$SHELL_PROFILE"
+    echo "$ENV_BLOCK" >> "$SHELL_PROFILE"
+    echo "[claude-gauge] Added conditional ANTHROPIC_BASE_URL to $SHELL_PROFILE"
+    echo "[claude-gauge] Run: source $SHELL_PROFILE (or restart your shell)"
   fi
 else
   echo "[claude-gauge] Could not detect shell profile. Add manually:"
-  echo "  $ENV_LINE"
+  echo "  $ENV_BLOCK"
 fi
 
 echo ""

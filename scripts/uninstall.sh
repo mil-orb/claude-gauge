@@ -45,15 +45,19 @@ else
   fi
 fi
 
-# Remove ANTHROPIC_BASE_URL from shell profiles
+# Remove claude-gauge block from shell profiles (handles both old single-line and new conditional block)
 for profile in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.profile"; do
-  if [[ -f "$profile" ]] && grep -q 'ANTHROPIC_BASE_URL' "$profile" 2>/dev/null; then
-    # Remove the export line and the comment above it
+  if [[ -f "$profile" ]] && grep -q 'claude-gauge rate limit proxy' "$profile" 2>/dev/null; then
     if command -v sed &>/dev/null; then
+      # Remove the conditional block (comment, if/curl, export, fi) and legacy single-line export
       sed -i.bak '/# claude-gauge rate limit proxy/d' "$profile"
-      sed -i.bak '/ANTHROPIC_BASE_URL/d' "$profile"
+      sed -i.bak '/curl.*--connect-timeout.*ANTHROPIC_BASE_URL\|if curl.*gauge/d' "$profile"
+      sed -i.bak '/export ANTHROPIC_BASE_URL.*localhost/d' "$profile"
+      sed -i.bak '/^fi$/{ N; /^fi\n$/d; }' "$profile"
+      # Clean up any leftover ANTHROPIC_BASE_URL lines from gauge
+      sed -i.bak '/ANTHROPIC_BASE_URL.*localhost.*3456/d' "$profile"
       rm -f "$profile.bak"
-      echo "[claude-gauge] Removed ANTHROPIC_BASE_URL from $profile"
+      echo "[claude-gauge] Removed claude-gauge config from $profile"
     fi
   fi
 done
