@@ -66,8 +66,6 @@ for profile in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc" "$HOME/.prof
 done
 
 echo ""
-echo "[claude-gauge] Uninstall complete."
-echo ""
 # On Windows, remove the user-level environment variable automatically
 if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* || "${OS:-}" == "Windows_NT" ]]; then
   WIN_VAL=$(powershell.exe -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL', 'User')" 2>/dev/null | tr -d '\r')
@@ -76,5 +74,10 @@ if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGW
     echo "[claude-gauge] Removed Windows ANTHROPIC_BASE_URL"
   fi
 fi
-echo "  Restart your shell to apply changes."
+
+echo ""
+echo "[claude-gauge] Uninstall complete."
+echo ""
+echo "  Start a new Claude Code session for changes to take effect."
+echo "  The current session still has the old environment loaded."
 echo ""

@@ -195,17 +195,25 @@ If the gauge shows old data, the proxy may have stopped updating. Restart it wit
 
 ## Uninstall
 
-In Claude Code, run:
+> **Do not use `/plugin uninstall claude-gauge`** — it removes plugin files before cleanup can run, leaving orphan proxy processes and stale environment variables behind that you would need to fix manually.
 
-```
-/plugin uninstall claude-gauge
-```
-
-Then run the cleanup script to remove shell profile entries, stop the proxy, and clean up environment variables:
+Run the uninstall script from a terminal:
 
 ```bash
 bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
 ```
+
+This script handles the full cleanup:
+
+- **Stops the proxy** — kills the supervisor and detects any orphan proxy processes still holding the port
+- **Removes artifacts** — `~/.claude/gauge-proxy.pid` and `~/.claude/gauge-rate-limits.json`
+- **Restores your status line** — if you had a previous statusline config, it's restored from backup; otherwise the `statusLine` block is removed from `~/.claude/settings.json`
+- **Cleans shell profiles** — removes the `ANTHROPIC_BASE_URL` export block from `.zshrc`, `.bash_profile`, `.bashrc`, and `.profile`
+- **Clears Windows env var** — removes the user-level `ANTHROPIC_BASE_URL` if it points to the proxy
+
+**Start a new Claude Code session after uninstalling.** The current session's environment still has `ANTHROPIC_BASE_URL` pointing to the (now stopped) proxy — a new session picks up the cleaned environment.
+
+Without the uninstall script, you would need to manually stop the proxy, remove the environment variable from your shell profile (and Windows system settings if applicable), and edit `~/.claude/settings.json` to remove the `statusLine` configuration.
 
 ## Security
 
