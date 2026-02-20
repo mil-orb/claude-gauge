@@ -22,6 +22,23 @@ fi
 # Read current settings
 CURRENT=$(cat "$SETTINGS")
 
+# Check if statusline already points to claude-gauge (skip if so)
+ALREADY_SET="false"
+if command -v jq &>/dev/null; then
+  ALREADY_SET=$(jq -r '.statusLine.command // "" | test("claude-gauge") | tostring' <<< "$CURRENT" 2>/dev/null || echo "false")
+else
+  ALREADY_SET=$(node -e "
+    const j = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+    console.log(j.statusLine && j.statusLine.command && j.statusLine.command.includes('claude-gauge') ? 'true' : 'false');
+  " <<< "$CURRENT")
+fi
+
+if [[ "$ALREADY_SET" == "true" ]]; then
+  # Already configured — just ensure proxy is running
+  node "$PLUGIN_ROOT/scripts/proxy-ctl.js" start 2>/dev/null || true
+  exit 0
+fi
+
 # Backup existing statusline config if present
 if command -v jq &>/dev/null; then
   HAS_STATUSLINE=$(jq -r 'has("statusLine")' <<< "$CURRENT")
