@@ -16,11 +16,42 @@ if [[ ! "$PORT_VAL" =~ ^[0-9]+$ ]] || (( PORT_VAL < 1 || PORT_VAL > 65535 )); th
   exit 1
 fi
 PROXY_URL="http://localhost:${PORT_VAL}"
+SESSION_REGISTRY="$HOME/.claude/gauge-sessions"
 
 IS_WINDOWS=false
 if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* || "${OS:-}" == "Windows_NT" ]]; then
   IS_WINDOWS=true
 fi
+
+# Resolve Claude Code PID — native Windows PID when in MSYS2/Cygwin
+if [[ "$IS_WINDOWS" == "true" ]]; then
+  CLAUDE_PID=$(cat /proc/$PPID/winpid 2>/dev/null || echo "$PPID")
+else
+  CLAUDE_PID=$PPID
+fi
+
+# Register this session's PID and clean dead entries
+register_session() {
+  mkdir -p "$HOME/.claude"
+  local live_pids=()
+  if [[ -f "$SESSION_REGISTRY" ]]; then
+    while IFS= read -r pid; do
+      pid=$(echo "$pid" | tr -d '[:space:]')
+      [[ -z "$pid" || ! "$pid" =~ ^[0-9]+$ ]] && continue
+      if node -e "try{process.kill($pid,0)}catch{process.exit(1)}" 2>/dev/null; then
+        live_pids+=("$pid")
+      fi
+    done < "$SESSION_REGISTRY"
+  fi
+  local found=false
+  for p in "${live_pids[@]+"${live_pids[@]}"}"; do
+    [[ "$p" == "$CLAUDE_PID" ]] && found=true && break
+  done
+  [[ "$found" != "true" ]] && live_pids+=("$CLAUDE_PID")
+  local tmp="$SESSION_REGISTRY.tmp.$$"
+  printf '%s\n' "${live_pids[@]}" > "$tmp"
+  mv -f "$tmp" "$SESSION_REGISTRY"
+}
 
 # --- Helper: verify proxy is accepting connections (uses node, no curl dependency) ---
 proxy_is_alive() {
@@ -84,6 +115,7 @@ fi
 
 if [[ "$ALREADY_SET" == "true" ]]; then
   # Already configured — ensure proxy is running and env var is correct
+  register_session
   node "$PLUGIN_ROOT/scripts/proxy-ctl.js" start 2>/dev/null || true
   # Give proxy a moment to bind if just started
   sleep 0.3 2>/dev/null || true
@@ -127,6 +159,7 @@ else
 fi
 
 # Start rate limit proxy
+register_session
 echo "[claude-gauge] Starting rate limit proxy..."
 node "$PLUGIN_ROOT/scripts/proxy-ctl.js" start
 

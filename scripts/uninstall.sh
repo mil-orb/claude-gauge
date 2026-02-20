@@ -15,6 +15,7 @@ node "$PLUGIN_ROOT/scripts/proxy-ctl.js" stop 2>/dev/null || true
 # Remove PID file and cache
 rm -f "$HOME/.claude/gauge-proxy.pid" 2>/dev/null || true
 rm -f "$HOME/.claude/gauge-rate-limits.json" 2>/dev/null || true
+rm -f "$HOME/.claude/gauge-sessions" 2>/dev/null || true
 
 # Restore previous statusline config or remove it
 if [[ -f "$BACKUP" ]]; then
