@@ -1,7 +1,7 @@
 {
   "name": "claude-gauge",
   "version": "1.0.0",
-  "description": "Intuitive context window visualizer for Claude Code - color-coded progress bar in your status line",
+  "description": "Real-time rate limit gauge and session dashboard for Claude Code — tokens, cost, and utilization in your status line",
   "author": {
     "name": "mil-orb"
   },
@@ -9,9 +9,11 @@
   "license": "MIT",
   "keywords": [
     "statusline",
-    "context",
+    "rate-limit",
     "tokens",
-    "visualizer",
-    "gauge"
+    "cost",
+    "gauge",
+    "proxy",
+    "dashboard"
   ]
 }

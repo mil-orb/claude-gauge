@@ -9,3 +9,6 @@ package.json
 package-lock.json
 readme-preview.html
 CLAUDE.md
+scripts/demo-video.js
+scripts/mock-pump.js
+scripts/video-test-frame.html
