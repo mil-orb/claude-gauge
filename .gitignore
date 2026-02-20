@@ -4,4 +4,8 @@
 .DS_Store
 Thumbs.db
 node_modules/
+assets/frames/
+package.json
+package-lock.json
+readme-preview.html
 CLAUDE.md

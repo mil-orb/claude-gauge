@@ -75,17 +75,18 @@ async function main() {
   const { chromium } = require('playwright');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  await page.setViewportSize({ width: 620, height: 120 });
 
-  // 1. Session demo — smooth animation of a real session
+  // 1. Session demo — taller viewport to fit terminal + gauge
+  await page.setViewportSize({ width: 620, height: 340 });
   process.stdout.write('Capturing session-demo');
   let sessionPngs = await captureFrames(page, manifest['session-demo']);
-  // Hold final frames (100% usage) for dramatic pause before loop
+  // Hold final frames for dramatic pause before loop
   for (let i = 0; i < 10; i++) sessionPngs.push(sessionPngs[sessionPngs.length - 1]);
   console.log('Encoding session-demo.gif...');
   await createGif(sessionPngs, path.join(OUT_DIR, 'session-demo.gif'), { delay: 80 });
 
-  // 2. Display modes — hold each mode longer
+  // 2. Display modes — shorter viewport, hold each mode longer
+  await page.setViewportSize({ width: 620, height: 120 });
   process.stdout.write('Capturing display-modes');
   const modePngs = await captureFrames(page, manifest['display-modes']);
   console.log('Encoding display-modes.gif...');
