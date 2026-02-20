@@ -17,7 +17,7 @@
 
 ---
 
-You don't know you're approaching your rate limit until Claude stops responding. Checking with `/usage` breaks your flow. The Anthropic dashboard means leaving the terminal.
+You don't know you're approaching your rate limit until Claude stops responding. Checking with `/usage` breaks your flow. Alt-tabbing to the Anthropic dashboard breaks it even more.
 
 **claude-gauge** puts a live session dashboard in your status line — rate limit utilization, token count, cost, and session duration, all in one glanceable bar. A lightweight local proxy captures rate limit headers from the Anthropic API. The bar fills as you consume quota — green when you're fine, red when you're running low. Always visible, zero interruption.
 
