@@ -207,6 +207,16 @@ Then run the cleanup script to remove shell profile entries, stop the proxy, and
 bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
 ```
 
+## Security
+
+The proxy binds to `127.0.0.1` only — it is not exposed to the network. All upstream traffic is forwarded over TLS to `api.anthropic.com`.
+
+The localhost hop between Claude Code and the proxy is plaintext HTTP. This means your API key is visible to any process running as your user on the loopback interface. In practice this is the same trust boundary as the default Claude Code setup, where the API key is stored in an environment variable readable by any local process.
+
+The setup script writes a conditional `ANTHROPIC_BASE_URL` export to your shell profile (`.zshrc`, `.bashrc`, etc.) and on Windows sets a user-level environment variable. The uninstall script removes both. The `GAUGE_PROXY_PORT` value is validated numeric before interpolation into any shell or PowerShell commands.
+
+The proxy has zero npm dependencies. The entire codebase is auditable in a few files.
+
 ## Requirements
 
 - Node.js 18+ (included with Claude Code)
