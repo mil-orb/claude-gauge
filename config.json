@@ -6,7 +6,7 @@
   "//bar_size": "small (10) | medium (20) | large (30) | xlarge (40) | or any number",
   "bar_size": "medium",
   "//show_cost": "show running session cost in USD",
-  "show_cost": false,
+  "show_cost": true,
   "//show_duration": "show elapsed session time",
   "show_duration": true,
   "//show_lines": "show lines added and removed",

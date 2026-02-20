@@ -17,9 +17,9 @@
 
 ---
 
-You don't know you're approaching your rate limit until Claude stops responding. Checking with `/usage` wastes tokens and breaks your flow. The Anthropic dashboard means leaving the terminal.
+You don't know you're approaching your rate limit until Claude stops responding. Checking with `/usage` breaks your flow. The Anthropic dashboard means leaving the terminal.
 
-**claude-gauge** puts a color-coded gauge in your status line showing your 5-hour rate limit utilization. A lightweight local proxy captures rate limit headers from the Anthropic API and feeds them to the gauge. The bar fills as you consume quota — green when you're fine, red when you're running low. One glance, zero interruption, zero tokens spent.
+**claude-gauge** puts a live session dashboard in your status line — rate limit utilization, token count, cost, and session duration, all in one glanceable bar. A lightweight local proxy captures rate limit headers from the Anthropic API. The bar fills as you consume quota — green when you're fine, red when you're running low. Always visible, zero interruption.
 
 ## How It Works
 
@@ -58,11 +58,12 @@ The install hook automatically starts the proxy and adds `ANTHROPIC_BASE_URL` to
 **With proxy running** — the bar shows your rate limit utilization:
 
 ```
-████████▒░░░░░░░░░░░ ⚡32% · 47.9k · 3m
-│                     │       │        └─ session duration
-│                     │       └────────── session tokens (input + output)
-│                     └────────────────── 5h rate limit utilization
-└──────────────────────────────────────── gauge bar (fills as quota is consumed)
+████████▒░░░░░░░░░░░ ⚡32% · 47.9k · $1.84 · 3m
+│                     │       │        │       └─ session duration
+│                     │       │        └──────── session cost (USD)
+│                     │       └───────────────── session tokens (input + output)
+│                     └───────────────────────── 5h rate limit utilization
+└─────────────────────────────────────────────── gauge bar (fills as quota is consumed)
 ```
 
 - Bar **fills** from left as utilization climbs (use `drain` mode for a fuel gauge that empties)
@@ -123,7 +124,7 @@ Run `/claude-gauge:config` for an interactive setup, or edit `config.json` in th
   "display": "bar",           // bar, drain, dots, blocks, compact
   "color": "gradient",        // gradient, ocean, ember, frost, retro, spectrum, mono
   "bar_size": "medium",       // small (10), medium (20), large (30), xlarge (40), or a number
-  "show_cost": false,         // running session cost in USD
+  "show_cost": true,          // running session cost in USD
   "show_duration": true,      // elapsed session time
   "show_lines": false,        // lines added and removed
   "currency_rate": null,      // local currency conversion (e.g. 0.79 for GBP, symbol auto-detected)

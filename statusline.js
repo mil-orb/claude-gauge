@@ -208,7 +208,7 @@ function loadConfig() {
     display: 'bar',
     color: 'gradient',
     bar_size: 'medium',
-    show_cost: false,
+    show_cost: true,
     show_duration: true,
     show_lines: false,
     currency_rate: null,
@@ -451,7 +451,7 @@ async function main() {
     return;
   }
 
-  if (cfg.show_cost === true) {
+  if (cfg.show_cost !== false) {
     let costFmt;
     if (typeof cfg.currency_rate === 'number' && cfg.currency_rate > 0) {
       costFmt = `${detectCurrencySymbol()}${(costUsd * cfg.currency_rate).toFixed(2)}`;
