@@ -8,7 +8,13 @@ BACKUP="$HOME/.claude/statusline.backup.json"
 # Use node statusline.js — works on all platforms (Windows, macOS, Linux)
 STATUSLINE_CMD="node \"$PLUGIN_ROOT/statusline.js\""
 
+# SECURITY: PORT_VAL is interpolated into PowerShell commands and shell profile
+# code blocks. It MUST be validated numeric before any use downstream.
 PORT_VAL="${GAUGE_PROXY_PORT:-3456}"
+if [[ ! "$PORT_VAL" =~ ^[0-9]+$ ]] || (( PORT_VAL < 1 || PORT_VAL > 65535 )); then
+  echo "[claude-gauge] ERROR: GAUGE_PROXY_PORT must be a valid port number (got: $PORT_VAL)" >&2
+  exit 1
+fi
 PROXY_URL="http://localhost:${PORT_VAL}"
 
 IS_WINDOWS=false
@@ -35,6 +41,8 @@ sync_windows_env() {
     local current
     current=$(powershell.exe -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL', 'User')" 2>/dev/null | tr -d '\r')
     if [[ "$current" != "$PROXY_URL" ]]; then
+      # SECURITY: $PROXY_URL is interpolated into PowerShell. Safe because PORT_VAL
+      # is validated numeric at script entry. Do not remove that validation.
       powershell.exe -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', '$PROXY_URL', 'User')" 2>/dev/null
       echo "[claude-gauge] Set Windows ANTHROPIC_BASE_URL=$PROXY_URL"
     fi
@@ -84,12 +92,6 @@ if [[ "$ALREADY_SET" == "true" ]]; then
 fi
 
 # --- First-time install path below ---
-
-# Validate proxy port
-if [[ ! "$PORT_VAL" =~ ^[0-9]+$ ]] || (( PORT_VAL < 1 || PORT_VAL > 65535 )); then
-  echo "[claude-gauge] ERROR: GAUGE_PROXY_PORT must be a valid port number" >&2
-  exit 1
-fi
 
 # Backup existing statusline config if present
 if command -v jq &>/dev/null; then
@@ -149,10 +151,13 @@ fi
 # Conditional export: only set ANTHROPIC_BASE_URL if the proxy is reachable.
 # If the proxy is down, Claude Code talks directly to the API — no ECONNREFUSED.
 # Uses node (already a hard dependency) instead of curl for portability.
+#
+# SECURITY: PORT_VAL is interpolated into code written to the user's shell profile.
+# Safe because PORT_VAL is validated numeric at script entry. Do not remove that validation.
 ENV_BLOCK="# claude-gauge rate limit proxy (conditional — falls back to direct API)
 if node -e \"const n=require('net');const s=n.createConnection(${PORT_VAL},'127.0.0.1');s.on('connect',()=>{s.destroy();process.exit(0)});s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),300)\" 2>/dev/null; then
   export ANTHROPIC_BASE_URL=\"$PROXY_URL\"
-fi"
+fi # end claude-gauge"
 
 # On Windows, set or clear the user-level env var based on proxy health.
 sync_windows_env
@@ -189,7 +194,7 @@ echo "  ║  ⚡ Rate limit fuel gauge is active       ║"
 echo "  ║  📊 Proxy running on port ${PORT_VAL}            ║"
 echo "  ║                                          ║"
 echo "  ║  Configure: /claude-gauge:config          ║"
-echo "  ║  Uninstall: /plugin uninstall claude-gauge║"
+echo "  ║  Uninstall: see README for instructions    ║"
 echo "  ║                                          ║"
 echo "  ╚══════════════════════════════════════════╝"
 echo ""
