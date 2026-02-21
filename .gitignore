@@ -11,4 +11,5 @@ readme-preview.html
 CLAUDE.md
 scripts/demo-video.js
 scripts/mock-pump.js
+scripts/mock-ratelimit.js
 scripts/video-test-frame.html

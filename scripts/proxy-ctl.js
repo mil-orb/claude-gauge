@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { spawn } = require('node:child_process');
+const { spawn, execSync } = require('node:child_process');
 const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -84,21 +84,64 @@ async function start() {
   }
 }
 
-function stop() {
+// Find PID of process listening on a port (cross-platform)
+function findPidOnPort(port) {
+  try {
+    if (process.platform === 'win32') {
+      const out = execSync('netstat -ano -p TCP', { encoding: 'utf8', timeout: 5000 });
+      for (const line of out.split('\n')) {
+        if (new RegExp(`\\s127\\.0\\.0\\.1:${port}\\s`).test(line) && /LISTENING/i.test(line)) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parseInt(parts[parts.length - 1], 10);
+          if (pid > 0) return pid;
+        }
+      }
+    } else {
+      const out = execSync(`lsof -ti :${port}`, { encoding: 'utf8', timeout: 5000 }).trim();
+      if (out) {
+        const pid = parseInt(out.split('\n')[0], 10);
+        if (pid > 0) return pid;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+async function stop() {
   const pid = readPid();
   if (pid && isRunning(pid)) {
     try {
       process.kill(pid, 'SIGTERM');
-      console.log(`[gauge-proxy] stopped (pid ${pid})`);
+      console.log(`[gauge-proxy] stopped supervisor (pid ${pid})`);
     } catch (err) {
-      console.error(`[gauge-proxy] failed to stop: ${err.message}`);
+      console.error(`[gauge-proxy] failed to stop pid ${pid}: ${err.message}`);
     }
-  } else if (!pid) {
-    console.log('[gauge-proxy] no PID file found');
-  } else {
+  } else if (pid) {
     console.log('[gauge-proxy] stale PID file (process already gone)');
   }
   try { fs.unlinkSync(PID_FILE); } catch {}
+
+  // On Windows, SIGTERM uses TerminateProcess which doesn't let the supervisor
+  // run its cleanup handler — the child proxy.js becomes an orphan. Wait briefly
+  // then check if anything is still holding the port.
+  if (pid) await new Promise(r => setTimeout(r, 500));
+
+  const portBusy = await isPortInUse(PORT);
+  if (portBusy) {
+    const orphanPid = findPidOnPort(parseInt(PORT, 10));
+    if (orphanPid) {
+      try {
+        process.kill(orphanPid, 'SIGTERM');
+        console.log(`[gauge-proxy] killed orphan proxy (pid ${orphanPid}) on port ${PORT}`);
+      } catch (err) {
+        console.error(`[gauge-proxy] failed to kill orphan (pid ${orphanPid}): ${err.message}`);
+      }
+    } else {
+      console.log(`[gauge-proxy] warning: port ${PORT} still in use but could not identify process`);
+    }
+  } else if (!pid) {
+    console.log('[gauge-proxy] not running');
+  }
 }
 
 async function status() {
