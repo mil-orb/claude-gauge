@@ -195,17 +195,35 @@ If the gauge shows old data, the proxy may have stopped updating. Restart it wit
 
 ## Uninstall
 
-In Claude Code, run:
+> **Do not use `/plugin uninstall claude-gauge`** — it removes plugin files before cleanup can run, leaving orphan proxy processes and stale environment variables behind that you would need to fix manually.
 
-```
-/plugin uninstall claude-gauge
-```
-
-Then run the cleanup script to remove shell profile entries, stop the proxy, and clean up environment variables:
+Run the uninstall script from a terminal:
 
 ```bash
 bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
 ```
+
+This script handles the full cleanup:
+
+- **Stops the proxy** — kills the supervisor and detects any orphan proxy processes still holding the port
+- **Removes artifacts** — `~/.claude/gauge-proxy.pid` and `~/.claude/gauge-rate-limits.json`
+- **Restores your status line** — if you had a previous statusline config, it's restored from backup; otherwise the `statusLine` block is removed from `~/.claude/settings.json`
+- **Cleans shell profiles** — removes the `ANTHROPIC_BASE_URL` export block from `.zshrc`, `.bash_profile`, `.bashrc`, and `.profile`
+- **Clears Windows env var** — removes the user-level `ANTHROPIC_BASE_URL` if it points to the proxy
+
+**Start a new Claude Code session after uninstalling.** The current session's environment still has `ANTHROPIC_BASE_URL` pointing to the (now stopped) proxy — a new session picks up the cleaned environment.
+
+Without the uninstall script, you would need to manually stop the proxy, remove the environment variable from your shell profile (and Windows system settings if applicable), and edit `~/.claude/settings.json` to remove the `statusLine` configuration.
+
+## Security
+
+The proxy binds to `127.0.0.1` only — it is not exposed to the network. All upstream traffic is forwarded over TLS to `api.anthropic.com`.
+
+The localhost hop between Claude Code and the proxy is plaintext HTTP. This means your API key is visible to any process running as your user on the loopback interface. In practice this is the same trust boundary as the default Claude Code setup, where the API key is stored in an environment variable readable by any local process.
+
+The setup script writes a conditional `ANTHROPIC_BASE_URL` export to your shell profile (`.zshrc`, `.bashrc`, etc.) and on Windows sets a user-level environment variable. The uninstall script removes both. The `GAUGE_PROXY_PORT` value is validated numeric before interpolation into any shell or PowerShell commands.
+
+The proxy has zero npm dependencies. The entire codebase is auditable in a few files.
 
 ## Requirements
 

@@ -4,15 +4,15 @@
     "name": "mil-orb"
   },
   "metadata": {
-    "description": "Context window visualizer for Claude Code",
+    "description": "Rate limit fuel gauge and session dashboard for Claude Code",
     "homepage": "https://github.com/mil-orb/claude-gauge"
   },
   "plugins": [
     {
       "name": "claude-gauge",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "source": "./",
-      "description": "Context window visualizer for Claude Code - color-coded progress bar in your status line"
+      "description": "Rate limit fuel gauge for Claude Code — live API utilization via local proxy, session cost, tokens, and auto-shutdown when idle"
     }
   ]
 }
