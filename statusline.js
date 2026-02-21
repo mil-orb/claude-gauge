@@ -423,8 +423,12 @@ async function main() {
 
   // The bar percentage: rate limit utilization or context window used
   // API returns utilization as a fraction (0–1), convert to percentage
+  // When 7d >= 1.0 the plan allocation is exhausted (extra usage) — cap at 100%
   // drain renderer inverts this into a fuel gauge (full = lots remaining)
-  const barPct = hasRateLimit ? Math.max(0, Math.min(100, Math.round(rlData['5h'] * 100))) : pct;
+  const rl7dFull = hasRateLimit && typeof rlData['7d'] === 'number' && rlData['7d'] >= 1;
+  const barPct = hasRateLimit
+    ? (rl7dFull ? 100 : Math.max(0, Math.min(100, Math.round((rlData['5h'] || 0) * 100))))
+    : pct;
   // Color based on utilization (high = red) — for text segments and compact mode
   const color = colorFn(barPct);
 
@@ -436,8 +440,12 @@ async function main() {
 
   if (hasRateLimit) {
     // Rate limit is the bar — show ⚡ label + utilization
-    const rl5h = rlData['5h'] * 100;
-    segments.push(`\u26a1${rl5h < 10 ? rl5h.toFixed(1) : Math.round(rl5h)}%`);
+    if (rl7dFull) {
+      segments.push(`\u26a1100% 7d`);
+    } else {
+      const rl5h = (rlData['5h'] || 0) * 100;
+      segments.push(`\u26a1${rl5h < 10 ? rl5h.toFixed(1) : Math.round(rl5h)}%`);
+    }
     // Session tokens from JSONL
     if (sessionTokens) {
       segments.push(fmtTokens(sessionTokens.total));
