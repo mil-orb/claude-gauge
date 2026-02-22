@@ -68,7 +68,7 @@ echo ""
 if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* || "${OS:-}" == "Windows_NT" ]]; then
   WIN_VAL=$(powershell.exe -NoProfile -Command "[System.Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL', 'User')" 2>/dev/null | tr -d '\r')
   if [[ -n "$WIN_VAL" && "$WIN_VAL" == *"localhost"* ]]; then
-    powershell.exe -NoProfile -Command "[System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', \$null, 'User')" 2>/dev/null
+    powershell.exe -NoProfile -Command '[System.Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", $null, "User")' 2>/dev/null
     echo "[claude-gauge] Removed Windows ANTHROPIC_BASE_URL"
   fi
 fi

@@ -82,6 +82,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Health check — fast path, no upstream call, no connection counter
+  if (req.method === 'GET' && req.url === '/health') {
+    const body = JSON.stringify({
+      status: 'ok',
+      uptime: process.uptime(),
+      connections: activeConnections,
+      port: PORT,
+    });
+    res.writeHead(200, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) });
+    res.end(body);
+    return;
+  }
+
   // Connection limit
   if (activeConnections >= MAX_CONNECTIONS) {
     res.writeHead(429, { 'content-type': 'application/json' });

@@ -48,13 +48,7 @@ In Claude Code, run:
 
 Restart Claude Code. The gauge appears in your status line immediately.
 
-The install hook automatically starts the proxy and adds a **conditional** `ANTHROPIC_BASE_URL` to your shell profile — the env var is only set when the proxy is reachable, so if the proxy is down, Claude Code talks directly to the API instead of failing.
-
-On Windows, you may also need to set it system-wide:
-
-```powershell
-[System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', 'http://localhost:3456', 'User')
-```
+The install hook automatically starts the proxy and sets `ANTHROPIC_BASE_URL` for the session via Claude Code's `CLAUDE_ENV_FILE` mechanism — scoped to just that session, no global environment pollution. If the proxy is down when a session starts, the env var is not set and Claude Code talks directly to the API.
 
 ## What You See
 
@@ -151,33 +145,18 @@ Set `"show_rate_limit": false` in config.json to disable rate limit tracking ent
 
 **`ECONNREFUSED` errors / Claude Code can't reach the API**
 
-If the proxy is down and `ANTHROPIC_BASE_URL` still points to it, API calls will fail. Quick fix by platform:
+If the proxy dies mid-session, `ANTHROPIC_BASE_URL` still points to it for that session. The supervisor auto-restarts the proxy within ~500ms, but if it fails permanently:
 
-**Windows (PowerShell):**
-```powershell
-# Remove the env var so Claude Code talks directly to the API
-[System.Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $null, 'User')
-# Then restart Claude Code
-```
-
-**macOS / Linux:**
 ```bash
-# Immediate fix for the current session
+# Immediate fix — unset for the current session
 unset ANTHROPIC_BASE_URL
-
-# Permanent fix — remove the export from your shell profile
-# Check ~/.zshrc, ~/.bash_profile, or ~/.bashrc for the claude-gauge block and delete it
 ```
 
-**All platforms — nuclear option:**
+Starting a new session will re-evaluate proxy availability — if the proxy is down, the env var won't be set and Claude Code routes directly to the API.
+
+**Legacy cleanup** (upgrading from older versions that wrote to shell profiles or Windows env vars):
 ```bash
 bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
-```
-
-Then restart Claude Code. Re-running setup will install the newer conditional export that avoids this issue going forward:
-
-```bash
-bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/setup.sh
 ```
 
 **Proxy not starting**
@@ -209,12 +188,12 @@ This script handles the full cleanup:
 - **Stops the proxy** — kills the supervisor and detects any orphan proxy processes still holding the port
 - **Removes artifacts** — `~/.claude/gauge-proxy.pid` and `~/.claude/gauge-rate-limits.json`
 - **Restores your status line** — if you had a previous statusline config, it's restored from backup; otherwise the `statusLine` block is removed from `~/.claude/settings.json`
-- **Cleans shell profiles** — removes the `ANTHROPIC_BASE_URL` export block from `.zshrc`, `.bash_profile`, `.bashrc`, and `.profile`
-- **Clears Windows env var** — removes the user-level `ANTHROPIC_BASE_URL` if it points to the proxy
+- **Cleans legacy shell profiles** — removes `ANTHROPIC_BASE_URL` export blocks from `.zshrc`, `.bash_profile`, `.bashrc`, and `.profile` (from older versions)
+- **Clears legacy Windows env var** — removes the user-level `ANTHROPIC_BASE_URL` if it points to the proxy (from older versions)
 
-**Start a new Claude Code session after uninstalling.** The current session's environment still has `ANTHROPIC_BASE_URL` pointing to the (now stopped) proxy — a new session picks up the cleaned environment.
+**Start a new Claude Code session after uninstalling.** The current session's environment still has `ANTHROPIC_BASE_URL` set — a new session starts clean.
 
-Without the uninstall script, you would need to manually stop the proxy, remove the environment variable from your shell profile (and Windows system settings if applicable), and edit `~/.claude/settings.json` to remove the `statusLine` configuration.
+Without the uninstall script, you would need to manually stop the proxy and edit `~/.claude/settings.json` to remove the `statusLine` configuration. The session-scoped env var requires no cleanup — it's ephemeral.
 
 ## Security
 
@@ -222,7 +201,7 @@ The proxy binds to `127.0.0.1` only — it is not exposed to the network. All up
 
 The localhost hop between Claude Code and the proxy is plaintext HTTP. This means your API key is visible to any process running as your user on the loopback interface. In practice this is the same trust boundary as the default Claude Code setup, where the API key is stored in an environment variable readable by any local process.
 
-The setup script writes a conditional `ANTHROPIC_BASE_URL` export to your shell profile (`.zshrc`, `.bashrc`, etc.) and on Windows sets a user-level environment variable. The uninstall script removes both. The `GAUGE_PROXY_PORT` value is validated numeric before interpolation into any shell or PowerShell commands.
+The setup script sets `ANTHROPIC_BASE_URL` via Claude Code's `CLAUDE_ENV_FILE` — a session-scoped mechanism that writes no persistent state to shell profiles or system environment variables. The `GAUGE_PROXY_PORT` value is validated numeric before interpolation into any commands.
 
 The proxy has zero npm dependencies. The entire codebase is auditable in a few files.
 
