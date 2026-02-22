@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/node-18%2B-brightgreen?style=flat-square" alt="Node 18+">
   <img src="https://img.shields.io/badge/zero-dependencies-blue?style=flat-square" alt="Zero Dependencies">
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="MIT License">
+  [![CodeQL](https://github.com/mil-orb/claude-gauge/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/mil-orb/claude-gauge/actions/workflows/github-code-scanning/codeql)
 </p>
 
 ---
