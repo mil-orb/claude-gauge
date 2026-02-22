@@ -111,8 +111,15 @@ async function stop() {
   const pid = readPid();
   if (pid && isRunning(pid)) {
     try {
-      process.kill(pid, 'SIGTERM');
-      console.log(`[gauge-proxy] stopped supervisor (pid ${pid})`);
+      if (process.platform === 'win32') {
+        // taskkill /T /F kills entire process tree (supervisor + child proxy),
+        // bypassing the TerminateProcess limitation that prevents cleanup handlers
+        execSync(`taskkill /T /F /PID ${pid}`, { encoding: 'utf8', timeout: 5000, windowsHide: true });
+      } else {
+        // Kill process group — supervisor was spawned detached (group leader)
+        try { process.kill(-pid, 'SIGTERM'); } catch { process.kill(pid, 'SIGTERM'); }
+      }
+      console.log(`[gauge-proxy] stopped (pid ${pid})`);
     } catch (err) {
       console.error(`[gauge-proxy] failed to stop pid ${pid}: ${err.message}`);
     }
@@ -121,26 +128,35 @@ async function stop() {
   }
   try { fs.unlinkSync(PID_FILE); } catch {}
 
-  // On Windows, SIGTERM uses TerminateProcess which doesn't let the supervisor
-  // run its cleanup handler — the child proxy.js becomes an orphan. Wait briefly
-  // then check if anything is still holding the port.
-  if (pid) await new Promise(r => setTimeout(r, 500));
+  // Wait for processes to fully exit and release the port
+  if (pid) await new Promise(r => setTimeout(r, 1000));
 
-  const portBusy = await isPortInUse(PORT);
-  if (portBusy) {
+  // Verify port is free — retry with escalation for stubborn processes
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const portBusy = await isPortInUse(PORT);
+    if (!portBusy) {
+      if (attempt === 0 && !pid) console.log('[gauge-proxy] not running');
+      return;
+    }
+
     const orphanPid = findPidOnPort(parseInt(PORT, 10));
     if (orphanPid) {
       try {
-        process.kill(orphanPid, 'SIGTERM');
-        console.log(`[gauge-proxy] killed orphan proxy (pid ${orphanPid}) on port ${PORT}`);
+        if (process.platform === 'win32') {
+          execSync(`taskkill /T /F /PID ${orphanPid}`, { encoding: 'utf8', timeout: 5000, windowsHide: true });
+        } else {
+          // Escalate to SIGKILL on third attempt
+          process.kill(orphanPid, attempt < 2 ? 'SIGTERM' : 'SIGKILL');
+        }
+        console.log(`[gauge-proxy] killed orphan (pid ${orphanPid}) on port ${PORT}`);
       } catch (err) {
         console.error(`[gauge-proxy] failed to kill orphan (pid ${orphanPid}): ${err.message}`);
       }
+      await new Promise(r => setTimeout(r, 500));
     } else {
       console.log(`[gauge-proxy] warning: port ${PORT} still in use but could not identify process`);
+      break;
     }
-  } else if (!pid) {
-    console.log('[gauge-proxy] not running');
   }
 }
 

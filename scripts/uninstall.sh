@@ -10,7 +10,23 @@ echo "[claude-gauge] Uninstalling..."
 
 # Stop the proxy
 echo "[claude-gauge] Stopping rate limit proxy..."
-node "$PLUGIN_ROOT/scripts/proxy-ctl.js" stop 2>/dev/null || true
+node "$PLUGIN_ROOT/scripts/proxy-ctl.js" stop || true
+
+# Belt-and-suspenders: verify port is free, force-kill any stragglers
+PROXY_PORT="${GAUGE_PROXY_PORT:-3456}"
+if command -v lsof &>/dev/null; then
+  STRAGGLER=$(lsof -ti :"$PROXY_PORT" 2>/dev/null || true)
+  if [[ -n "$STRAGGLER" ]]; then
+    echo "[claude-gauge] Force-killing straggler on port $PROXY_PORT (pid $STRAGGLER)..."
+    kill -9 $STRAGGLER 2>/dev/null || true
+  fi
+elif [[ "${OS:-}" == "Windows_NT" || "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+  STRAGGLER=$(netstat -ano -p TCP 2>/dev/null | grep "127\.0\.0\.1:${PROXY_PORT}.*LISTENING" | awk '{print $NF}' | head -1)
+  if [[ -n "$STRAGGLER" && "$STRAGGLER" != "0" ]]; then
+    echo "[claude-gauge] Force-killing straggler on port $PROXY_PORT (pid $STRAGGLER)..."
+    taskkill.exe /T /F /PID "$STRAGGLER" 2>/dev/null || true
+  fi
+fi
 
 # Remove PID file and cache
 rm -f "$HOME/.claude/gauge-proxy.pid" 2>/dev/null || true

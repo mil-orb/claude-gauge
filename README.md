@@ -38,17 +38,18 @@ A zero-dependency reverse proxy (`proxy.js`) sits between Claude Code and the An
 
 ## Install
 
-In Claude Code, run:
+**Step 1** — In Claude Code, run these two commands:
 
 ```
 /plugin marketplace add mil-orb/claude-gauge
-
 /plugin install claude-gauge
 ```
 
-Restart Claude Code. The gauge appears in your status line immediately.
+**Step 2** — Restart Claude Code.
 
-The install hook automatically starts the proxy and sets `ANTHROPIC_BASE_URL` for the session via Claude Code's `CLAUDE_ENV_FILE` mechanism — scoped to just that session, no global environment pollution. If the proxy is down when a session starts, the env var is not set and Claude Code talks directly to the API.
+That's it. The gauge appears in your status line immediately.
+
+> **What happens behind the scenes:** The install hook starts a lightweight local proxy and sets `ANTHROPIC_BASE_URL` for each session via Claude Code's `CLAUDE_ENV_FILE` mechanism — scoped to just that session, no global environment changes. If the proxy isn't running when a session starts, the env var is simply not set and Claude Code talks directly to the API as normal.
 
 ## What You See
 
@@ -175,25 +176,33 @@ If the gauge shows old data, the proxy may have stopped updating. Restart it wit
 
 ## Uninstall
 
-> **Do not use `/plugin uninstall claude-gauge`** — it removes plugin files before cleanup can run, leaving orphan proxy processes and stale environment variables behind that you would need to fix manually.
+> **Important:** Do not use `/plugin uninstall claude-gauge` — it deletes plugin files before cleanup can run, leaving orphan proxy processes behind.
 
-Run the uninstall script from a terminal:
+**Step 1** — Run the uninstall script:
 
 ```bash
 bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
 ```
 
-This script handles the full cleanup:
+**Step 2** — Remove the plugin from Claude Code:
 
-- **Stops the proxy** — kills the supervisor and detects any orphan proxy processes still holding the port
+```
+/plugin uninstall claude-gauge
+```
+
+**Step 3** — Start a new Claude Code session.
+
+The current session's environment still has `ANTHROPIC_BASE_URL` pointing at the (now-stopped) proxy. A new session starts clean.
+
+<details>
+<summary>What the uninstall script does</summary>
+
+- **Stops the proxy** — kills the supervisor and force-kills any orphan processes still holding the port
 - **Removes artifacts** — `~/.claude/gauge-proxy.pid` and `~/.claude/gauge-rate-limits.json`
-- **Restores your status line** — if you had a previous statusline config, it's restored from backup; otherwise the `statusLine` block is removed from `~/.claude/settings.json`
-- **Cleans legacy shell profiles** — removes `ANTHROPIC_BASE_URL` export blocks from `.zshrc`, `.bash_profile`, `.bashrc`, and `.profile` (from older versions)
-- **Clears legacy Windows env var** — removes the user-level `ANTHROPIC_BASE_URL` if it points to the proxy (from older versions)
+- **Restores your status line** — restores your previous statusline config from backup, or removes the `statusLine` block from `~/.claude/settings.json`
+- **Cleans legacy config** — removes `ANTHROPIC_BASE_URL` entries from shell profiles and Windows user-level environment variables (from older versions)
 
-**Start a new Claude Code session after uninstalling.** The current session's environment still has `ANTHROPIC_BASE_URL` set — a new session starts clean.
-
-Without the uninstall script, you would need to manually stop the proxy and edit `~/.claude/settings.json` to remove the `statusLine` configuration. The session-scoped env var requires no cleanup — it's ephemeral.
+</details>
 
 ## Security
 
