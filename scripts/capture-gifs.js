@@ -13,7 +13,14 @@ const OUT_DIR = path.join(__dirname, '..', 'assets');
 async function startServer(dir, port) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
-      const fp = path.join(dir, req.url.slice(1));
+      const root = path.resolve(dir);
+      const requestedPath = req.url.slice(1);
+      const fp = path.resolve(root, requestedPath);
+      if (fp !== root && !fp.startsWith(root + path.sep)) {
+        res.writeHead(404);
+        res.end('404');
+        return;
+      }
       try {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(fs.readFileSync(fp));
