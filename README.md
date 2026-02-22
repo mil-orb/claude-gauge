@@ -155,11 +155,6 @@ unset ANTHROPIC_BASE_URL
 
 Starting a new session will re-evaluate proxy availability — if the proxy is down, the env var won't be set and Claude Code routes directly to the API.
 
-**Legacy cleanup** (upgrading from older versions that wrote to shell profiles or Windows env vars):
-```bash
-bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
-```
-
 **Proxy not starting**
 
 ```bash
@@ -200,7 +195,6 @@ The current session's environment still has `ANTHROPIC_BASE_URL` pointing at the
 - **Stops the proxy** — kills the supervisor and force-kills any orphan processes still holding the port
 - **Removes artifacts** — `~/.claude/gauge-proxy.pid` and `~/.claude/gauge-rate-limits.json`
 - **Restores your status line** — restores your previous statusline config from backup, or removes the `statusLine` block from `~/.claude/settings.json`
-- **Cleans legacy config** — removes `ANTHROPIC_BASE_URL` entries from shell profiles and Windows user-level environment variables (from older versions)
 
 </details>
 
