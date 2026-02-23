@@ -17,6 +17,15 @@ if [[ ! "$PORT_VAL" =~ ^[0-9]+$ ]] || (( PORT_VAL < 1 || PORT_VAL > 65535 )); th
 fi
 PROXY_URL="http://localhost:${PORT_VAL}"
 
+# --- Platform detection ---
+IS_WINDOWS="false"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) IS_WINDOWS="true" ;;
+esac
+if [[ "${OS:-}" == "Windows_NT" ]]; then
+  IS_WINDOWS="true"
+fi
+
 # --- Helper: verify proxy is accepting connections (uses node, no curl dependency) ---
 proxy_is_alive() {
   node -e "
@@ -25,6 +34,51 @@ proxy_is_alive() {
     s.on('error', () => process.exit(1));
     setTimeout(() => process.exit(1), 500);
   " 2>/dev/null
+}
+
+# --- Helper: set or remove env.ANTHROPIC_BASE_URL in settings.json ---
+# Used on Windows where CLAUDE_ENV_FILE is not supported by Claude Code.
+settings_env_set() {
+  local url="$1"
+  node -e "
+    const fs = require('fs');
+    const p = process.argv[1];
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!j.env) j.env = {};
+    j.env.ANTHROPIC_BASE_URL = process.argv[2];
+    fs.writeFileSync(p, JSON.stringify(j, null, 2));
+  " "$SETTINGS" "$url" 2>/dev/null
+}
+
+settings_env_remove() {
+  node -e "
+    const fs = require('fs');
+    const p = process.argv[1];
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (j.env) {
+      delete j.env.ANTHROPIC_BASE_URL;
+      if (Object.keys(j.env).length === 0) delete j.env;
+    }
+    fs.writeFileSync(p, JSON.stringify(j, null, 2));
+  " "$SETTINGS" 2>/dev/null
+}
+
+# --- Helper: route API through proxy (platform-aware) ---
+# On non-Windows: uses CLAUDE_ENV_FILE (session-scoped, ideal).
+# On Windows: CLAUDE_ENV_FILE not yet supported by Claude Code,
+#   so we fall back to settings.json env block (persistent, with health-gate).
+ensure_proxy_env() {
+  if [[ "$IS_WINDOWS" == "true" ]]; then
+    if proxy_is_alive; then
+      settings_env_set "$PROXY_URL"
+    else
+      settings_env_remove
+    fi
+  else
+    if [ -n "${CLAUDE_ENV_FILE:-}" ] && proxy_is_alive; then
+      echo "export ANTHROPIC_BASE_URL=\"$PROXY_URL\"" >> "$CLAUDE_ENV_FILE"
+    fi
+  fi
 }
 
 # Ensure settings file exists
@@ -57,10 +111,7 @@ if [[ "$ALREADY_SET" == "true" ]]; then
   node "$PLUGIN_ROOT/scripts/proxy-ctl.js" start 2>/dev/null || true
   # Give proxy a moment to bind if just started
   sleep 0.3 2>/dev/null || true
-  # Session-scoped env var via CLAUDE_ENV_FILE (no global pollution)
-  if [ -n "${CLAUDE_ENV_FILE:-}" ] && proxy_is_alive; then
-    echo "export ANTHROPIC_BASE_URL=\"$PROXY_URL\"" >> "$CLAUDE_ENV_FILE"
-  fi
+  ensure_proxy_env
   exit 0
 fi
 
@@ -106,10 +157,7 @@ node "$PLUGIN_ROOT/scripts/proxy-ctl.js" start
 # Give proxy a moment to bind
 sleep 0.3 2>/dev/null || true
 
-# Session-scoped env var via CLAUDE_ENV_FILE (no global pollution)
-if [ -n "${CLAUDE_ENV_FILE:-}" ] && proxy_is_alive; then
-  echo "export ANTHROPIC_BASE_URL=\"$PROXY_URL\"" >> "$CLAUDE_ENV_FILE"
-fi
+ensure_proxy_env
 
 echo ""
 echo "  claude-gauge installed!"

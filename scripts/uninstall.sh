@@ -32,6 +32,20 @@ fi
 rm -f "$HOME/.claude/gauge-proxy.pid" 2>/dev/null || true
 rm -f "$HOME/.claude/gauge-rate-limits.json" 2>/dev/null || true
 
+# Remove env.ANTHROPIC_BASE_URL from settings.json (Windows fallback cleanup)
+if [[ -f "$SETTINGS" ]]; then
+  node -e "
+    const fs = require('fs');
+    const p = process.argv[1];
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (j.env) {
+      delete j.env.ANTHROPIC_BASE_URL;
+      if (Object.keys(j.env).length === 0) delete j.env;
+    }
+    fs.writeFileSync(p, JSON.stringify(j, null, 2));
+  " "$SETTINGS" 2>/dev/null || true
+fi
+
 # Restore previous statusline config or remove it
 if [[ -f "$BACKUP" ]]; then
   echo "[claude-gauge] Restoring previous statusline config..."
