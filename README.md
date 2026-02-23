@@ -49,7 +49,7 @@ A zero-dependency reverse proxy (`proxy.js`) sits between Claude Code and the An
 
 That's it. The gauge appears in your status line immediately.
 
-> **What happens behind the scenes:** The install hook starts a lightweight local proxy and sets `ANTHROPIC_BASE_URL` for each session via Claude Code's `CLAUDE_ENV_FILE` mechanism — scoped to just that session, no global environment changes. If the proxy isn't running when a session starts, the env var is simply not set and Claude Code talks directly to the API as normal.
+> **What happens behind the scenes:** The install hook starts a lightweight local proxy and routes API traffic through it by setting `ANTHROPIC_BASE_URL`. On macOS/Linux this uses Claude Code's session-scoped `CLAUDE_ENV_FILE` mechanism. On Windows (where `CLAUDE_ENV_FILE` is not yet supported), it writes to the `env` block in `~/.claude/settings.json` instead, with a health check that removes the entry if the proxy isn't reachable. Either way, if the proxy is down when a session starts, the env var is not set and Claude Code talks directly to the API as normal.
 
 ## What You See
 
