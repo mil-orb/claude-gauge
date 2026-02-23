@@ -92,8 +92,19 @@ function cleanup() {
     clearInterval(pollTimer);
     pollTimer = null;
   }
-  if (child) {
-    try { child.kill('SIGTERM'); } catch {}
+  if (child && child.pid) {
+    try {
+      if (process.platform === 'win32') {
+        // On Windows, taskkill /T /F reliably kills the entire process tree.
+        // child.kill('SIGTERM') maps to TerminateProcess but is less reliable
+        // when the supervisor itself is about to exit immediately after.
+        execSync(`taskkill /T /F /PID ${child.pid}`, {
+          encoding: 'utf8', timeout: 5000, windowsHide: true,
+        });
+      } else {
+        child.kill('SIGTERM');
+      }
+    } catch {}
   }
 }
 
