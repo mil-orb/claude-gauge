@@ -6,7 +6,7 @@
 // Backoff resets after 60 seconds of healthy uptime.
 // Shuts down when no Claude Code processes are detected.
 
-const { spawn, execSync } = require('node:child_process');
+const { spawn, execSync, execFileSync } = require('node:child_process');
 const path = require('node:path');
 
 const PROXY_SCRIPT = path.join(__dirname, '..', 'proxy.js');
@@ -31,10 +31,14 @@ let consecutiveFails = 0;
 function claudeIsRunning() {
   try {
     if (process.platform === 'win32') {
-      const out = execSync('tasklist.exe /FI "IMAGENAME eq claude.exe" /NH', {
-        encoding: 'utf8', timeout: 5000, windowsHide: true,
-      });
-      return out.includes('claude.exe');
+      // tasklist.exe /FI can take 15+ seconds on some Windows machines,
+      // exceeding the timeout and causing false negatives. PowerShell
+      // Get-Process is consistently fast (~350ms).
+      const out = execFileSync('powershell.exe', [
+        '-NoProfile', '-Command',
+        'if(Get-Process claude -EA 0){echo 1}else{echo 0}',
+      ], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+      return out.trim() === '1';
     }
     // macOS / Linux
     execSync('pgrep -x claude', { timeout: 5000 });
