@@ -146,14 +146,23 @@ Set `"show_rate_limit": false` in config.json to disable rate limit tracking ent
 
 **`ECONNREFUSED` errors / Claude Code can't reach the API**
 
-If the proxy dies mid-session, `ANTHROPIC_BASE_URL` still points to it for that session. The supervisor auto-restarts the proxy within ~500ms, but if it fails permanently:
+If the proxy dies mid-session, `ANTHROPIC_BASE_URL` still points to it. The supervisor auto-restarts the proxy within ~500ms, but if it fails permanently:
 
 ```bash
-# Immediate fix — unset for the current session
+# macOS / Linux — unset for the current session
 unset ANTHROPIC_BASE_URL
 ```
 
-Starting a new session will re-evaluate proxy availability — if the proxy is down, the env var won't be set and Claude Code routes directly to the API.
+On **Windows**, the proxy URL is stored in `~/.claude/settings.json` rather than a session variable. To fix it manually, open `~/.claude/settings.json` and remove the `"env"` block:
+
+```jsonc
+// Delete this section:
+"env": {
+  "ANTHROPIC_BASE_URL": "http://localhost:3456"
+}
+```
+
+Starting a new session will re-evaluate proxy availability — if the proxy is down, the env var is not set (macOS/Linux) or removed from settings.json (Windows), and Claude Code routes directly to the API.
 
 **Proxy not starting**
 
@@ -187,14 +196,27 @@ bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
 
 **Step 3** — Start a new Claude Code session.
 
-The current session's environment still has `ANTHROPIC_BASE_URL` pointing at the (now-stopped) proxy. A new session starts clean.
+On macOS/Linux, the current session still has `ANTHROPIC_BASE_URL` set in memory — a new session starts without it. On Windows, the uninstall script already removed it from `settings.json`, so new sessions are clean immediately.
 
 <details>
 <summary>What the uninstall script does</summary>
 
 - **Stops the proxy** — kills the supervisor and force-kills any orphan processes still holding the port
-- **Removes artifacts** — `~/.claude/gauge-proxy.pid` and `~/.claude/gauge-rate-limits.json`
+- **Removes proxy artifacts** — `~/.claude/gauge-proxy.pid` and `~/.claude/gauge-rate-limits.json`
+- **Removes proxy routing** — deletes `env.ANTHROPIC_BASE_URL` from `~/.claude/settings.json` so Claude Code connects directly to the API
 - **Restores your status line** — restores your previous statusline config from backup, or removes the `statusLine` block from `~/.claude/settings.json`
+
+</details>
+
+<details>
+<summary>Manual cleanup (if the uninstall script isn't available)</summary>
+
+If the plugin files were already deleted (e.g., via `/plugin uninstall` before running the script):
+
+1. Kill any remaining proxy processes on port 3456
+2. Delete `~/.claude/gauge-proxy.pid` and `~/.claude/gauge-rate-limits.json`
+3. Open `~/.claude/settings.json` and remove the `"env"` block containing `ANTHROPIC_BASE_URL` (if present)
+4. Remove or update the `"statusLine"` block in `~/.claude/settings.json`
 
 </details>
 
@@ -204,7 +226,7 @@ The proxy binds to `127.0.0.1` only — it is not exposed to the network. All up
 
 The localhost hop between Claude Code and the proxy is plaintext HTTP. This means your API key is visible to any process running as your user on the loopback interface. In practice this is the same trust boundary as the default Claude Code setup, where the API key is stored in an environment variable readable by any local process.
 
-The setup script sets `ANTHROPIC_BASE_URL` via Claude Code's `CLAUDE_ENV_FILE` — a session-scoped mechanism that writes no persistent state to shell profiles or system environment variables. The `GAUGE_PROXY_PORT` value is validated numeric before interpolation into any commands.
+On macOS/Linux, the setup script sets `ANTHROPIC_BASE_URL` via Claude Code's `CLAUDE_ENV_FILE` — a session-scoped mechanism that writes no persistent state to shell profiles or system environment variables. On Windows (where `CLAUDE_ENV_FILE` is not yet supported), it writes to the `env` block in `~/.claude/settings.json` instead. This is persistent across sessions, but a health check on each session start removes the entry if the proxy isn't reachable — preventing stale proxy URLs from breaking the API. The `GAUGE_PROXY_PORT` value is validated numeric before interpolation into any commands.
 
 The proxy has zero npm dependencies. The entire codebase is auditable in a few files.
 
