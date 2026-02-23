@@ -290,7 +290,48 @@ const CLAUDE_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 
 const MAX_JSONL_BYTES = 10 * 1024 * 1024; // 10 MB cap
 
-function readSessionTokens() {
+function readTokensFromFile(filePath) {
+  try {
+    const st = fs.statSync(filePath);
+    let content;
+    if (st.size > MAX_JSONL_BYTES) {
+      const fd = fs.openSync(filePath, 'r');
+      const buf = Buffer.alloc(MAX_JSONL_BYTES);
+      fs.readSync(fd, buf, 0, MAX_JSONL_BYTES, st.size - MAX_JSONL_BYTES);
+      fs.closeSync(fd);
+      content = buf.toString('utf8');
+    } else {
+      content = fs.readFileSync(filePath, 'utf8');
+    }
+
+    const lines = content.split('\n');
+    let input = 0, output = 0;
+    for (const line of lines) {
+      if (!line || !line.includes('"assistant"')) continue;
+      try {
+        const j = JSON.parse(line);
+        if (j.type !== 'assistant' || !j.message || !j.message.usage) continue;
+        const u = j.message.usage;
+        input += u.input_tokens || 0;
+        output += u.output_tokens || 0;
+      } catch { /* skip malformed lines */ }
+    }
+    const total = input + output;
+    if (total === 0) return null;
+    return { input, output, total };
+  } catch {
+    return null;
+  }
+}
+
+function readSessionTokens(transcriptPath) {
+  // Use transcript_path from stdin to read the correct session's file
+  if (typeof transcriptPath === 'string' && transcriptPath.endsWith('.jsonl')) {
+    const result = readTokensFromFile(transcriptPath);
+    if (result) return result;
+  }
+
+  // Fallback: mtime-based scan for older Claude Code versions
   try {
     const resolvedBase = path.resolve(CLAUDE_PROJECTS_DIR);
     const dirs = fs.readdirSync(CLAUDE_PROJECTS_DIR);
@@ -318,35 +359,7 @@ function readSessionTokens() {
 
     // Pick most recent first, then largest as tiebreaker
     candidates.sort((a, b) => b.mtime - a.mtime || b.size - a.size);
-    const chosen = candidates[0];
-
-    // Read file with size cap
-    let content;
-    if (chosen.size > MAX_JSONL_BYTES) {
-      const fd = fs.openSync(chosen.path, 'r');
-      const buf = Buffer.alloc(MAX_JSONL_BYTES);
-      fs.readSync(fd, buf, 0, MAX_JSONL_BYTES, chosen.size - MAX_JSONL_BYTES);
-      fs.closeSync(fd);
-      content = buf.toString('utf8');
-    } else {
-      content = fs.readFileSync(chosen.path, 'utf8');
-    }
-
-    const lines = content.split('\n');
-    let input = 0, output = 0;
-    for (const line of lines) {
-      if (!line || !line.includes('"assistant"')) continue;
-      try {
-        const j = JSON.parse(line);
-        if (j.type !== 'assistant' || !j.message || !j.message.usage) continue;
-        const u = j.message.usage;
-        input += u.input_tokens || 0;
-        output += u.output_tokens || 0;
-      } catch { /* skip malformed lines */ }
-    }
-    const total = input + output;
-    if (total === 0) return null;
-    return { input, output, total };
+    return readTokensFromFile(candidates[0].path);
   } catch {
     return null;
   }
@@ -435,8 +448,8 @@ async function main() {
   // Build text segments
   const segments = [];
 
-  // Session tokens from JSONL transcript
-  const sessionTokens = readSessionTokens();
+  // Session tokens — prefer transcript_path from stdin for correct session
+  const sessionTokens = readSessionTokens(j.transcript_path);
 
   if (hasRateLimit) {
     // Rate limit is the bar — show ⚡ label + utilization
