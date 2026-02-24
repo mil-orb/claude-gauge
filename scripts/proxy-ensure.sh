@@ -39,7 +39,7 @@ fi
 node "$PLUGIN_ROOT/scripts/proxy-ctl.js" start 2>/dev/null || true
 sleep 0.3 2>/dev/null || true
 
-# Re-route API traffic if proxy came back
+# Re-route or clean up depending on whether proxy recovered
 if proxy_is_alive; then
   if [[ "$IS_WINDOWS" == "true" ]]; then
     node -e "
@@ -52,5 +52,19 @@ if proxy_is_alive; then
     " "$SETTINGS" "$PROXY_URL" 2>/dev/null
   elif [ -n "${CLAUDE_ENV_FILE:-}" ]; then
     echo "export ANTHROPIC_BASE_URL=\"$PROXY_URL\"" >> "$CLAUDE_ENV_FILE"
+  fi
+else
+  # Proxy failed to restart — remove stale URL so Claude Code talks direct to API
+  if [[ "$IS_WINDOWS" == "true" ]]; then
+    node -e "
+      const fs = require('fs');
+      const p = process.argv[1];
+      const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+      if (j.env) {
+        delete j.env.ANTHROPIC_BASE_URL;
+        if (Object.keys(j.env).length === 0) delete j.env;
+      }
+      fs.writeFileSync(p, JSON.stringify(j, null, 2));
+    " "$SETTINGS" 2>/dev/null
   fi
 fi
