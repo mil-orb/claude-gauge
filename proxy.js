@@ -6,6 +6,7 @@ const https = require('node:https');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const crypto = require('node:crypto');
 
 const PORT = parseInt(process.argv[2] || process.env.GAUGE_PROXY_PORT || '3456', 10);
 const TARGET_HOST = 'api.anthropic.com';
@@ -57,7 +58,7 @@ function writeCache(headers) {
   };
 
   // Atomic write: temp file + rename
-  const tmp = CACHE_FILE + '.tmp.' + process.pid;
+  const tmp = CACHE_FILE + '.tmp.' + crypto.randomBytes(8).toString('hex');
   try {
     fs.writeFileSync(tmp, JSON.stringify(data));
     fs.renameSync(tmp, CACHE_FILE);
@@ -79,6 +80,13 @@ const server = http.createServer((req, res) => {
   if (!req.url.startsWith('/') || /[\x00-\x1f]/.test(req.url)) {
     res.writeHead(400, { 'content-type': 'application/json' });
     res.end('{"error":"bad_request"}');
+    return;
+  }
+
+  // Only forward Anthropic API paths — reduces SSRF surface
+  if (req.url !== '/health' && !req.url.startsWith('/v1/')) {
+    res.writeHead(403, { 'content-type': 'application/json' });
+    res.end('{"error":"path_not_allowed"}');
     return;
   }
 

@@ -8,6 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PORT_VAL="${GAUGE_PROXY_PORT:-3456}"
+if [[ ! "$PORT_VAL" =~ ^[0-9]+$ ]] || (( PORT_VAL < 1 || PORT_VAL > 65535 )); then
+  echo "[claude-gauge] ERROR: GAUGE_PROXY_PORT must be a valid port number (got: $PORT_VAL)" >&2
+  exit 1
+fi
 PROXY_URL="http://localhost:${PORT_VAL}"
 SETTINGS="$HOME/.claude/settings.json"
 

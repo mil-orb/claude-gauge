@@ -327,7 +327,11 @@ function readTokensFromFile(filePath) {
 function readSessionTokens(transcriptPath) {
   // Use transcript_path from stdin to read the correct session's file
   if (typeof transcriptPath === 'string' && transcriptPath.endsWith('.jsonl')) {
-    const result = readTokensFromFile(transcriptPath);
+    // Validate path stays within ~/.claude/ to prevent arbitrary file reads
+    const resolved = path.resolve(transcriptPath);
+    const claudeDir = path.join(os.homedir(), '.claude');
+    if (!resolved.startsWith(claudeDir + path.sep)) return null;
+    const result = readTokensFromFile(resolved);
     if (result) return result;
   }
 

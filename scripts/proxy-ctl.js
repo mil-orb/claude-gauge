@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { spawn, execSync } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -11,6 +11,10 @@ const SUPERVISOR_SCRIPT = path.join(__dirname, 'proxy-supervisor.js');
 const CLAUDE_DIR = path.join(os.homedir(), '.claude');
 const PID_FILE = path.join(CLAUDE_DIR, 'gauge-proxy.pid');
 const PORT = process.env.GAUGE_PROXY_PORT || '3456';
+if (!/^\d+$/.test(PORT) || parseInt(PORT, 10) < 1 || parseInt(PORT, 10) > 65535) {
+  console.error('[gauge-proxy] invalid GAUGE_PROXY_PORT — must be 1-65535');
+  process.exit(1);
+}
 
 function readPid() {
   try {
@@ -88,7 +92,7 @@ async function start() {
 function findPidOnPort(port) {
   try {
     if (process.platform === 'win32') {
-      const out = execSync('netstat -ano -p TCP', { encoding: 'utf8', timeout: 5000 });
+      const out = execFileSync('netstat', ['-ano', '-p', 'TCP'], { encoding: 'utf8', timeout: 5000 });
       for (const line of out.split('\n')) {
         if (new RegExp(`\\s127\\.0\\.0\\.1:${port}\\s`).test(line) && /LISTENING/i.test(line)) {
           const parts = line.trim().split(/\s+/);
@@ -97,7 +101,7 @@ function findPidOnPort(port) {
         }
       }
     } else {
-      const out = execSync(`lsof -ti :${port}`, { encoding: 'utf8', timeout: 5000 }).trim();
+      const out = execFileSync('lsof', ['-t', '-i', ':' + port], { encoding: 'utf8', timeout: 5000 }).trim();
       if (out) {
         const pid = parseInt(out.split('\n')[0], 10);
         if (pid > 0) return pid;
@@ -114,7 +118,7 @@ async function stop() {
       if (process.platform === 'win32') {
         // taskkill /T /F kills entire process tree (supervisor + child proxy),
         // bypassing the TerminateProcess limitation that prevents cleanup handlers
-        execSync(`taskkill /T /F /PID ${pid}`, { encoding: 'utf8', timeout: 5000, windowsHide: true });
+        execFileSync('taskkill', ['/T', '/F', '/PID', String(pid)], { encoding: 'utf8', timeout: 5000, windowsHide: true });
       } else {
         // Kill process group — supervisor was spawned detached (group leader)
         try { process.kill(-pid, 'SIGTERM'); } catch { process.kill(pid, 'SIGTERM'); }
@@ -143,7 +147,7 @@ async function stop() {
     if (orphanPid) {
       try {
         if (process.platform === 'win32') {
-          execSync(`taskkill /T /F /PID ${orphanPid}`, { encoding: 'utf8', timeout: 5000, windowsHide: true });
+          execFileSync('taskkill', ['/T', '/F', '/PID', String(orphanPid)], { encoding: 'utf8', timeout: 5000, windowsHide: true });
         } else {
           // Escalate to SIGKILL on third attempt
           process.kill(orphanPid, attempt < 2 ? 'SIGTERM' : 'SIGKILL');
