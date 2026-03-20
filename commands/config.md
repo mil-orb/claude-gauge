@@ -24,7 +24,6 @@ You are configuring the claude-gauge plugin. Read the current config, then walk 
    - `show_cost`: show running session cost in USD. Default: false
    - `show_duration`: show elapsed session time. Default: true
    - `show_lines`: show lines added/removed. Default: false
-   - `show_rate_limit`: show ⚡ rate limit utilization from proxy. Default: true
 
    **Question 3 — Currency** (only ask if show_cost is enabled):
    - `currency_rate`: exchange rate from USD (e.g. 0.79 for GBP). Null means show USD. Symbol is auto-detected from locale.

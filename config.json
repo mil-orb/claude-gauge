@@ -12,7 +12,5 @@
   "//show_lines": "show lines added and removed",
   "show_lines": false,
   "//currency_rate": "convert cost to local currency, e.g. 0.79 for GBP. symbol auto-detected from locale",
-  "currency_rate": null,
-  "//show_rate_limit": "show ⚡ rate limit utilization (requires proxy — see README)",
-  "show_rate_limit": true
+  "currency_rate": null
 }

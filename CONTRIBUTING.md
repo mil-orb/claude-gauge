@@ -6,18 +6,15 @@ Thanks for your interest in contributing! claude-gauge is a small, focused proje
 
 1. Fork the repository and clone it locally
 2. Run `npm install` to install dev dependencies (Playwright, used for demo GIF generation only)
-3. The proxy and statusline have **zero runtime dependencies** — they use only Node.js built-ins
+3. The statusline renderer has **zero runtime dependencies** — it uses only Node.js built-ins
 
 ## Project Structure
 
 ```
-proxy.js                 # Reverse proxy — captures rate limit headers
-statusline.js            # Status line renderer — reads cache, renders gauge
+statusline.js            # Status line renderer — reads native rate_limits, renders gauge
 scripts/
-  proxy-ctl.js           # Proxy lifecycle control (start/stop/status)
-  proxy-supervisor.js    # Watchdog — restarts proxy on crash, auto-shuts down
   setup.sh               # SessionStart hook — installs gauge on first run
-  uninstall.sh           # Clean removal with orphan cleanup
+  uninstall.sh           # Clean removal with statusline restore
 hooks/
   hooks.json             # Claude Code hook configuration
 commands/                # Claude Code slash commands (/claude-gauge:config)
@@ -28,8 +25,7 @@ config.json              # User-facing display configuration
 
 - **Zero dependencies.** All runtime code uses Node.js built-ins only. Do not add npm dependencies.
 - **Cross-platform.** Everything must work on macOS, Linux, and Windows (MSYS2/Git Bash). Test on Windows if you touch process management or file paths.
-- **Minimal footprint.** The proxy is a transparent passthrough. It must not modify request/response bodies, add latency, or buffer SSE streams.
-- **Fail safe.** If the proxy is down, Claude Code must still work normally. Never leave `ANTHROPIC_BASE_URL` pointing at a dead proxy.
+- **Native integration.** Rate limit data comes from Claude Code's native `rate_limits` statusline field (v2.1.80+). No proxy or external API calls needed.
 
 ## Making Changes
 
@@ -49,10 +45,9 @@ config.json              # User-facing display configuration
 
 There is no automated test suite yet. Before submitting:
 
-1. **Start the proxy:** `node scripts/proxy-ctl.js start`
-2. **Verify it proxies:** `node scripts/proxy-ctl.js status` should show running
-3. **Test in Claude Code:** Install the plugin locally and verify the gauge renders
-4. **Test on your platform:** If your change touches process management, test on Windows and Unix if possible
+1. **Test in Claude Code:** Install the plugin locally and verify the gauge renders
+2. **Verify rate limits appear:** The `rate_limits` field should be present in the statusline JSON on Claude Code v2.1.80+
+3. **Test on your platform:** If your change touches process management, test on Windows and Unix if possible
 
 ### Commit messages
 
@@ -70,14 +65,13 @@ Keep the first line under 72 characters. Add detail in the body if needed.
 
 1. Create a branch from `main`
 2. Make your changes with clear, focused commits
-3. Ensure the proxy starts, stops, and proxies correctly
+3. Verify the gauge renders correctly with rate limit data
 4. Open a PR with a description of what changed and why
 
 ## Reporting Issues
 
-- **Proxy issues:** Include your OS, Node.js version (`node -v`), and the output of `node scripts/proxy-ctl.js status`
 - **Display issues:** Include your terminal emulator name and a screenshot
-- **Rate limit issues:** Note whether the proxy is running and check `~/.claude/gauge-rate-limits.json` for recent data
+- **Rate limit issues:** Ensure you're running Claude Code v2.1.80+ (the `rate_limits` field was added in that version)
 
 ## License
 

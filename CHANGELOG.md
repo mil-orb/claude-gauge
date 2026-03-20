@@ -2,6 +2,23 @@
 
 All notable changes to claude-gauge are documented here.
 
+## [2.0.0] - 2026-03-20
+
+### Changed
+- **Breaking:** Replaced local reverse proxy with Claude Code's native `rate_limits` statusline field (requires Claude Code v2.1.80+)
+- Rate limit data now read directly from stdin JSON — no proxy, no cache file, no `ANTHROPIC_BASE_URL` routing
+- Removed `show_rate_limit` config option (rate limits are always available natively)
+
+### Removed
+- `proxy.js` — reverse proxy no longer needed
+- `scripts/proxy-ctl.js` — proxy lifecycle management
+- `scripts/proxy-supervisor.js` — watchdog process
+- `scripts/proxy-ensure.sh` — UserPromptSubmit health check hook
+- `GAUGE_PROXY_PORT` environment variable
+- `ANTHROPIC_BASE_URL` routing and `CLAUDE_ENV_FILE` mechanism
+- `~/.claude/gauge-rate-limits.json` cache file
+- `~/.claude/gauge-proxy.pid` PID file
+
 ## [1.2.0] - 2026-02-24
 
 ### Added
