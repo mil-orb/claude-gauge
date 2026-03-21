@@ -1,50 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SETTINGS="$HOME/.claude/settings.json"
 BACKUP="$HOME/.claude/statusline.backup.json"
 
 echo "[claude-gauge] Uninstalling..."
-
-# Stop the proxy
-echo "[claude-gauge] Stopping rate limit proxy..."
-node "$PLUGIN_ROOT/scripts/proxy-ctl.js" stop || true
-
-# Belt-and-suspenders: verify port is free, force-kill any stragglers
-PROXY_PORT="${GAUGE_PROXY_PORT:-3456}"
-if command -v lsof &>/dev/null; then
-  STRAGGLER=$(lsof -ti :"$PROXY_PORT" 2>/dev/null || true)
-  if [[ -n "$STRAGGLER" ]]; then
-    echo "[claude-gauge] Force-killing straggler on port $PROXY_PORT (pid $STRAGGLER)..."
-    kill -9 $STRAGGLER 2>/dev/null || true
-  fi
-elif [[ "${OS:-}" == "Windows_NT" || "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
-  STRAGGLER=$(netstat -ano -p TCP 2>/dev/null | grep "127\.0\.0\.1:${PROXY_PORT}.*LISTENING" | awk '{print $NF}' | head -1)
-  if [[ -n "$STRAGGLER" && "$STRAGGLER" != "0" ]]; then
-    echo "[claude-gauge] Force-killing straggler on port $PROXY_PORT (pid $STRAGGLER)..."
-    taskkill.exe /T /F /PID "$STRAGGLER" 2>/dev/null || true
-  fi
-fi
-
-# Remove PID file and cache
-rm -f "$HOME/.claude/gauge-proxy.pid" 2>/dev/null || true
-rm -f "$HOME/.claude/gauge-rate-limits.json" 2>/dev/null || true
-
-# Remove env.ANTHROPIC_BASE_URL from settings.json (Windows fallback cleanup)
-if [[ -f "$SETTINGS" ]]; then
-  node -e "
-    const fs = require('fs');
-    const p = process.argv[1];
-    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-    if (j.env) {
-      delete j.env.ANTHROPIC_BASE_URL;
-      if (Object.keys(j.env).length === 0) delete j.env;
-    }
-    fs.writeFileSync(p, JSON.stringify(j, null, 2));
-  " "$SETTINGS" 2>/dev/null || true
-fi
 
 # Restore previous statusline config or remove it
 if [[ -f "$BACKUP" ]]; then
@@ -79,5 +39,4 @@ echo ""
 echo "[claude-gauge] Uninstall complete."
 echo ""
 echo "  Start a new Claude Code session for changes to take effect."
-echo "  The current session still has the old environment loaded."
 echo ""

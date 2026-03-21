@@ -25,9 +25,9 @@ function sessionData(step, totalSteps) {
   const linesAdded = Math.round(progress * 340 + Math.sin(progress * 4) * 30);
   const linesRemoved = Math.round(progress * 85 + Math.cos(progress * 3) * 15);
 
-  // Rate limit utilization: API returns fractions (0–1), grows from ~1% to ~40%
-  const rl5h = Math.max(0.005, progress * 0.38 + Math.sin(progress * Math.PI * 2) * 0.03);
-  const rl7d = Math.max(0.003, progress * 0.12 + Math.sin(progress * Math.PI) * 0.02);
+  // Rate limit utilization: grows from ~1% to ~40%
+  const rl5h = Math.max(0.5, progress * 38 + Math.sin(progress * Math.PI * 2) * 3);
+  const rl7d = Math.max(0.3, progress * 12 + Math.sin(progress * Math.PI) * 2);
 
   return {
     stdin: {
@@ -42,14 +42,10 @@ function sessionData(step, totalSteps) {
         total_lines_added: Math.max(0, linesAdded),
         total_lines_removed: Math.max(0, linesRemoved),
       },
-    },
-    rateLimit: {
-      '5h': Math.round(rl5h * 100) / 100,
-      '7d': Math.round(rl7d * 100) / 100,
-      tokens_limit: null,
-      tokens_remaining: null,
-      status: 'active',
-      ts: Date.now(),
+      rate_limits: {
+        session: { used_percentage: Math.round(rl5h), resets_at: new Date(Date.now() + 3600000).toISOString() },
+        weekly: { used_percentage: Math.round(rl7d), resets_at: new Date(Date.now() + 86400000).toISOString() },
+      },
     },
     sessionTokens: Math.round(progress * 170000),
   };
@@ -81,27 +77,23 @@ function genOutput(data, opts = {}) {
   const cfgOverride = JSON.stringify({
     display, color, bar_size: 30,
     show_cost: true, show_duration: true, show_lines: false,
-    show_rate_limit: true,
   });
 
-  const rlJson = JSON.stringify(data.rateLimit);
   const jsonlContent = fakeJsonl(data.sessionTokens);
 
   // Wrapper that mocks filesystem calls so statusline.js sees:
   // - config.json → our override
-  // - gauge-rate-limits.json → fake rate limit data (lstatSync + readFileSync)
   // - JSONL session files → fake token data (readdirSync + statSync + readFileSync)
+  // Rate limits are now passed via stdin JSON (rate_limits field), no mocking needed
   const wrapper = `
     const fs = require('node:fs');
     const path = require('node:path');
     const os = require('node:os');
 
     const origReadFileSync = fs.readFileSync;
-    const origLstatSync = fs.lstatSync;
     const origReaddirSync = fs.readdirSync;
     const origStatSync = fs.statSync;
 
-    const RL_JSON = ${JSON.stringify(rlJson)};
     const FAKE_JSONL = ${JSON.stringify(jsonlContent)};
     const CFG_JSON = ${JSON.stringify(cfgOverride)};
     const PROJECTS = path.join(os.homedir(), '.claude', 'projects');
@@ -109,17 +101,9 @@ function genOutput(data, opts = {}) {
     fs.readFileSync = function(p, enc) {
       if (typeof p === 'string') {
         if (p.endsWith('config.json')) return CFG_JSON;
-        if (p.includes('gauge-rate-limits')) return RL_JSON;
         if (p.endsWith('.jsonl')) return FAKE_JSONL;
       }
       return origReadFileSync.call(this, p, enc);
-    };
-
-    fs.lstatSync = function(p) {
-      if (typeof p === 'string' && p.includes('gauge-rate-limits')) {
-        return { isFile: () => true, isSymbolicLink: () => false };
-      }
-      return origLstatSync.call(this, p);
     };
 
     fs.readdirSync = function(p) {

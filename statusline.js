@@ -212,7 +212,6 @@ function loadConfig() {
     show_duration: true,
     show_lines: false,
     currency_rate: null,
-    show_rate_limit: true,
   };
   const ALLOWED_KEYS = new Set(Object.keys(defaults));
   try {
@@ -369,22 +368,20 @@ function readSessionTokens(transcriptPath) {
   }
 }
 
-// --- Read rate limit cache ---
-const RATE_LIMIT_CACHE = path.join(os.homedir(), '.claude', 'gauge-rate-limits.json');
-const RATE_LIMIT_STALE_MS = 10 * 60 * 1000; // 10 minutes
-
-function readRateLimit() {
-  try {
-    const st = fs.lstatSync(RATE_LIMIT_CACHE);
-    if (!st.isFile()) return null;
-    const raw = fs.readFileSync(RATE_LIMIT_CACHE, 'utf8');
-    const data = JSON.parse(raw);
-    if (Date.now() - data.ts > RATE_LIMIT_STALE_MS) return null;
-    if (typeof data['5h'] !== 'number' || !Number.isFinite(data['5h'])) return null;
-    return data;
-  } catch {
-    return null;
-  }
+// --- Read rate limits from native Claude Code statusline field ---
+// Since v2.1.80, Claude Code passes rate_limits in the statusline JSON:
+//   { session: { used_percentage, resets_at }, weekly: { used_percentage, resets_at } }
+function readRateLimit(rateLimits) {
+  if (!rateLimits || typeof rateLimits !== 'object') return null;
+  const session = rateLimits.session;
+  const weekly = rateLimits.weekly;
+  if (!session || typeof session.used_percentage !== 'number') return null;
+  return {
+    '5h': session.used_percentage,
+    '7d': weekly && typeof weekly.used_percentage === 'number' ? weekly.used_percentage : null,
+    session_resets_at: session.resets_at || null,
+    weekly_resets_at: weekly && weekly.resets_at ? weekly.resets_at : null,
+  };
 }
 
 // --- Main ---
@@ -435,16 +432,17 @@ async function main() {
   const ctxFmt = fmtTokens(ctxSize);
 
   // Rate limit: when available, the BAR shows rate limit utilization
-  const rlData = cfg.show_rate_limit !== false ? readRateLimit() : null;
+  // Native rate_limits field from Claude Code (v2.1.80+) — no proxy needed
+  const rlData = readRateLimit(j.rate_limits);
   const hasRateLimit = rlData != null;
 
   // The bar percentage: rate limit utilization or context window used
-  // API returns utilization as a fraction (0–1), convert to percentage
-  // When 7d >= 1.0 the plan allocation is exhausted (extra usage) — cap at 100%
+  // Native field provides used_percentage directly (0–100)
+  // When 7d >= 100 the plan allocation is exhausted — cap at 100%
   // drain renderer inverts this into a fuel gauge (full = lots remaining)
-  const rl7dFull = hasRateLimit && typeof rlData['7d'] === 'number' && rlData['7d'] >= 1;
+  const rl7dFull = hasRateLimit && typeof rlData['7d'] === 'number' && rlData['7d'] >= 100;
   const barPct = hasRateLimit
-    ? (rl7dFull ? 100 : Math.max(0, Math.min(100, Math.round((rlData['5h'] || 0) * 100))))
+    ? (rl7dFull ? 100 : Math.max(0, Math.min(100, Math.round(rlData['5h'] || 0))))
     : pct;
   // Color based on utilization (high = red) — for text segments and compact mode
   const color = colorFn(barPct);
@@ -460,7 +458,7 @@ async function main() {
     if (rl7dFull) {
       segments.push(`\u26a1100% 7d`);
     } else {
-      const rl5h = (rlData['5h'] || 0) * 100;
+      const rl5h = rlData['5h'] || 0;
       segments.push(`\u26a1${rl5h < 10 ? rl5h.toFixed(1) : Math.round(rl5h)}%`);
     }
     // Session tokens from JSONL
@@ -494,8 +492,8 @@ async function main() {
 
   const textPart = segments.join(' \u00b7 ');
 
-  // Hide bar when rate limit is enabled but data is stale/unavailable
-  if (cfg.show_rate_limit !== false && !hasRateLimit) {
+  // No rate limit data available — show text segments only (no bar)
+  if (!hasRateLimit) {
     process.stdout.write(textPart);
     return;
   }

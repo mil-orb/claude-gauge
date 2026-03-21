@@ -20,21 +20,18 @@
 
 You don't know you're approaching your rate limit until Claude stops responding. Checking with `/usage` breaks your flow. Alt-tabbing to the Anthropic dashboard breaks it even more.
 
-**claude-gauge** puts a live session dashboard in your status line — rate limit utilization, token count, cost, and session duration, all in one glanceable bar. A lightweight local proxy captures rate limit headers from the Anthropic API. The bar fills as you consume quota — green when you're fine, red when you're running low. Always visible, zero interruption.
+**claude-gauge** puts a live session dashboard in your status line — rate limit utilization, token count, cost, and session duration, all in one glanceable bar. The bar fills as you consume quota — green when you're fine, red when you're running low. Always visible, zero interruption.
 
 ## How It Works
 
 ```
-Claude Code  →  proxy (localhost:3456)  →  api.anthropic.com
-                      ↓
-               Captures rate limit headers
-                      ↓
-               Writes ~/.claude/gauge-rate-limits.json
-                      ↓
-               Gauge reads cache → displays fuel bar
+Claude Code  →  statusline.js  →  reads native rate_limits field
+                                   from Claude Code's statusline JSON
+                                         ↓
+                                   Renders fuel bar + session metrics
 ```
 
-A zero-dependency reverse proxy (`proxy.js`) sits between Claude Code and the Anthropic API. It forwards all requests, streams SSE responses without buffering, and captures `anthropic-ratelimit-unified-5h-utilization` from each response. The gauge reads this cache file and renders your quota as a fuel bar.
+Claude Code (v2.1.80+) natively provides rate limit data in the `rate_limits` field of the JSON passed to statusline scripts. claude-gauge reads this directly — no proxy, no extra API calls, no external dependencies.
 
 ## Install
 
@@ -48,8 +45,6 @@ A zero-dependency reverse proxy (`proxy.js`) sits between Claude Code and the An
 **Step 2** — Restart Claude Code.
 
 That's it. The gauge appears in your status line immediately.
-
-> **What happens behind the scenes:** The install hook starts a lightweight local proxy and routes API traffic through it by setting `ANTHROPIC_BASE_URL`. On macOS/Linux this uses Claude Code's session-scoped `CLAUDE_ENV_FILE` mechanism. On Windows (where `CLAUDE_ENV_FILE` is not yet supported), it writes to the `env` block in `~/.claude/settings.json` instead, with a health check that removes the entry if the proxy isn't reachable. Either way, if the proxy is down when a session starts, the env var is not set and Claude Code talks directly to the API as normal.
 
 ## What You See
 
@@ -71,11 +66,9 @@ That's it. The gauge appears in your status line immediately.
 - `⚡32%` — your 5-hour rolling utilization percentage
 - Session tokens are read from Claude Code's local JSONL transcript files
 
-**Without proxy** — session metrics are still shown (tokens, cost, duration) without the rate limit bar.
-
 ## Display Types
 
-Five built-in visualizations, all driven by rate limit when the proxy is running:
+Five built-in visualizations:
 
 <p align="center">
   <img src="assets/display-modes.gif" alt="display modes" width="580">
@@ -121,66 +114,13 @@ Run `/claude-gauge:config` for an interactive setup, or edit `config.json` in th
   "show_cost": true,          // running session cost in USD
   "show_duration": true,      // elapsed session time
   "show_lines": false,        // lines added and removed
-  "currency_rate": null,      // local currency conversion (e.g. 0.79 for GBP, symbol auto-detected)
-  "show_rate_limit": true     // enable rate limit gauge (requires proxy)
+  "currency_rate": null       // local currency conversion (e.g. 0.79 for GBP, symbol auto-detected)
 }
 ```
 
 > **Tip:** Config path is `~/.claude/plugins/claude-gauge/config.json`
 
-## Proxy Management
-
-```bash
-node scripts/proxy-ctl.js start    # start proxy (detached)
-node scripts/proxy-ctl.js stop     # stop proxy
-node scripts/proxy-ctl.js status   # check if running
-```
-
-The proxy listens on port 3456 by default. Set `GAUGE_PROXY_PORT` to change it.
-
-Cache staleness: if the proxy hasn't updated the cache in 10 minutes, the gauge falls back to the "no proxy" display. This prevents showing stale rate limit data.
-
-Set `"show_rate_limit": false` in config.json to disable rate limit tracking entirely.
-
-## Troubleshooting
-
-**`ECONNREFUSED` errors / Claude Code can't reach the API**
-
-If the proxy dies mid-session, `ANTHROPIC_BASE_URL` still points to it. The supervisor auto-restarts the proxy within ~500ms, but if it fails permanently:
-
-```bash
-# macOS / Linux — unset for the current session
-unset ANTHROPIC_BASE_URL
-```
-
-On **Windows**, the proxy URL is stored in `~/.claude/settings.json` rather than a session variable. To fix it manually, open `~/.claude/settings.json` and remove the `"env"` block:
-
-```jsonc
-// Delete this section:
-"env": {
-  "ANTHROPIC_BASE_URL": "http://localhost:3456"
-}
-```
-
-Starting a new session will re-evaluate proxy availability — if the proxy is down, the env var is not set (macOS/Linux) or removed from settings.json (Windows), and Claude Code routes directly to the API.
-
-**Proxy not starting**
-
-```bash
-# Check status
-node ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/proxy-ctl.js status
-
-# Restart it
-node ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/proxy-ctl.js start
-```
-
-**Stale rate limit data**
-
-If the gauge shows old data, the proxy may have stopped updating. Restart it with the command above. The gauge automatically hides rate limit data when the cache is older than 10 minutes.
-
 ## Uninstall
-
-> **Important:** Do not use `/plugin uninstall claude-gauge` — it deletes plugin files before cleanup can run, leaving orphan proxy processes behind.
 
 **Step 1** — Run the uninstall script:
 
@@ -196,45 +136,19 @@ bash ~/.claude/plugins/cache/mil-orb/claude-gauge/*/scripts/uninstall.sh
 
 **Step 3** — Start a new Claude Code session.
 
-On macOS/Linux, the current session still has `ANTHROPIC_BASE_URL` set in memory — a new session starts without it. On Windows, the uninstall script already removed it from `settings.json`, so new sessions are clean immediately.
-
 <details>
 <summary>What the uninstall script does</summary>
 
-- **Stops the proxy** — kills the supervisor and force-kills any orphan processes still holding the port
-- **Removes proxy artifacts** — `~/.claude/gauge-proxy.pid` and `~/.claude/gauge-rate-limits.json`
-- **Removes proxy routing** — deletes `env.ANTHROPIC_BASE_URL` from `~/.claude/settings.json` so Claude Code connects directly to the API
 - **Restores your status line** — restores your previous statusline config from backup, or removes the `statusLine` block from `~/.claude/settings.json`
 
 </details>
 
-<details>
-<summary>Manual cleanup (if the uninstall script isn't available)</summary>
-
-If the plugin files were already deleted (e.g., via `/plugin uninstall` before running the script):
-
-1. Kill any remaining proxy processes on port 3456
-2. Delete `~/.claude/gauge-proxy.pid` and `~/.claude/gauge-rate-limits.json`
-3. Open `~/.claude/settings.json` and remove the `"env"` block containing `ANTHROPIC_BASE_URL` (if present)
-4. Remove or update the `"statusLine"` block in `~/.claude/settings.json`
-
-</details>
-
-## Security
-
-The proxy binds to `127.0.0.1` only — it is not exposed to the network. All upstream traffic is forwarded over TLS to `api.anthropic.com`.
-
-The localhost hop between Claude Code and the proxy is plaintext HTTP. This means your API key is visible to any process running as your user on the loopback interface. In practice this is the same trust boundary as the default Claude Code setup, where the API key is stored in an environment variable readable by any local process.
-
-On macOS/Linux, the setup script sets `ANTHROPIC_BASE_URL` via Claude Code's `CLAUDE_ENV_FILE` — a session-scoped mechanism that writes no persistent state to shell profiles or system environment variables. On Windows (where `CLAUDE_ENV_FILE` is not yet supported), it writes to the `env` block in `~/.claude/settings.json` instead. This is persistent across sessions, but a health check on each session start removes the entry if the proxy isn't reachable — preventing stale proxy URLs from breaking the API. The `GAUGE_PROXY_PORT` value is validated numeric before interpolation into any commands.
-
-The proxy has zero npm dependencies. The entire codebase is auditable in a few files.
-
 ## Requirements
 
 - Node.js 18+ (included with Claude Code)
+- Claude Code v2.1.80+ (provides native `rate_limits` field)
 - A terminal with 24-bit color support (most modern terminals)
-- No additional dependencies (proxy uses Node.js built-in `http`/`https`)
+- No additional dependencies
 
 ## License
 
